@@ -1,0 +1,269 @@
+ขนส่งไม่สามารถจัดส่งพัสดุได้ | scam | 20 | BE CAUTIOUS
+['delivery']
+
+ยังไม่ชำระค่าปรับจราจร ดูรายละเอียด | scam | 20 | BE CAUTIOUS
+['financial_pressure']
+
+คุณมียอดค้างชำระ 5,000 บาท จ่ายบิล | scam | 40 | WARNING
+['financial_pressure', 'money']
+
+คุณมียอดค้างชำระ 7,000 บาท ติดต่อ | scam | 40 | WARNING
+['financial_pressure', 'money']
+
+คุณมีวงเงินเหลือ ตรวจสอบที่ | scam | 45 | WARNING
+['financial_pressure', 'link']
+
+คุณมีวงเงินเหลือ ตรวจสอบเลย | scam | 45 | WARNING
+['financial_pressure', 'link']
+
+บัญชีของท่านจะถูกระงับภายใน 24 ชั่วโมง | scam | 65 | WARNING
+['urgency', 'identity_threat', 'time_pressure']
+
+บัญชีของคุณถูกระงับ กรุณาคลิกยืนยัน | scam | 70 | HIGH_RISK
+['urgency', 'identity_threat', 'link']
+
+บัญชีจะถูกระงับภายใน 24 ชั่วโมง | scam | 30 | BE CAUTIOUS
+['urgency', 'time_pressure']
+
+กรุณาโอนเงินเพื่อตรวจสอบ | scam | 45 | WARNING
+['financial_pressure', 'link']
+
+บัญชีของคุณถูกระงับการใช้งาน กรุณาคลิกลิงก์เพื่อยืนยันตัวตน | scam | 70 | HIGH_RISK
+['urgency', 'identity_threat', 'link']
+
+คุณมีคดีความ กรุณาคลิกลิงก์เพื่อตรวจสอบรายละเอียด | scam | 45 | WARNING
+['authority', 'link']
+
+รับเงินคืน ค่าไฟฟ้า กรุณาคลิกลิงก์เพื่อตรวจสอบรายละเอียด | scam | 85 | HIGH_RISK
+['financial_pressure', 'promotion', 'link']
+
+คุณได้รับรางวัล iPhone 14 กรุณาคลิกลิงก์เพื่อรับรางวัล | scam | 55 | WARNING
+['promotion', 'link']
+
+บัญชีคะแนนของคุณ หมดอายุวันนี้ | scam | 10 | BE CAUTIOUS
+['urgency']
+
+โปรเด็ดฝาก 100รับ200 ระบบออโต้ไม่มีขั้นต่ำ | scam | 30 | BE CAUTIOUS
+['promotion']
+
+ขนส่งไม่สามารถส่งพัสดุของคุณได้ เนื่องจากติดต่อผู้รับไม่ได้ ติดต่อเจ้าหน้าที่ยืนยันจัดส่งอีกครั้ง | scam | 75 | HIGH_RISK
+['authority', 'delivery', 'link']
+
+ไม่สามารถติดต่อคุณได้ กรุณาติดต่อเจ้าหน้าที่ เพื่อยืนยันจัดส่งพัสดุใหม่อีกครั้ง | scam | 75 | HIGH_RISK
+['authority', 'delivery', 'link']
+
+เลขแทรกกิ้ง xxxxxxxxxxxxx ของคุณ จัดส่งปลายทางติดต่อเจ้าหน้าที่เพื่อเช็กสถานะพัสดุ | scam | 75 | HIGH_RISK
+['authority', 'delivery', 'link']
+
+คุณได้รับรางวัล iPhone 14 กรุณาคลิก | scam | 30 | BE CAUTIOUS
+['promotion']
+
+บัญชีของคุณตรวจพบการใช้งานผิดปกติ กรุณาคลิกลิงก์เพื่อตรวจสอบทันที | scam | 70 | HIGH_RISK
+['urgency', 'identity_threat', 'link']
+
+ระบบความปลอดภัยตรวจพบความเสี่ยง กรุณายืนยันตัวตนภายในวันนี้ | scam | 25 | BE CAUTIOUS
+['identity_threat']
+
+บัญชีของท่านจะถูกปิดใช้งานวันนี้ กรุณาติดต่อเจ้าหน้าที่ด่วน | scam | 90 | HIGH_RISK
+['urgency', 'identity_threat', 'authority', 'link']
+
+กรุณาโอนเงินเพื่อยืนยันข้อมูลบัญชีของคุณ | scam | 55 | WARNING
+['identity_threat', 'financial_pressure']
+
+บัญชีของคุณถูกระงับชั่วคราว กรุณาคลิกยืนยันตัวตน | scam | 70 | HIGH_RISK
+['urgency', 'identity_threat', 'link']
+
+ตรวจพบการโอนเงินผิดปกติ กรุณาคลิกลิงก์เพื่อตรวจสอบ | scam | 45 | WARNING
+['financial_pressure', 'link']
+
+คุณมียอดค้างชำระค่าบริการ กรุณาชำระเงินภายใน 24 ชั่วโมง | scam | 60 | WARNING
+['urgency', 'financial_pressure', 'time_pressure']
+
+แจ้งเตือนความปลอดภัย บัญชีของคุณอาจถูกแฮก กรุณายืนยันตัวตน | scam | 25 | BE CAUTIOUS
+['identity_threat']
+
+บัญชีของท่านจะถูกระงับหากไม่ดำเนินการภายในวันนี้ | scam | 45 | WARNING
+['urgency', 'identity_threat']
+
+กรุณาติดต่อเจ้าหน้าที่เพื่อยืนยันข้อมูลบัญชีของคุณ | scam | 80 | HIGH_RISK
+['identity_threat', 'authority', 'link']
+
+คุณมีคดีความค้างอยู่ กรุณาคลิกลิงก์เพื่อตรวจสอบรายละเอียด | scam | 45 | WARNING
+['authority', 'link']
+
+ศาลแจ้งเตือนการดำเนินคดี กรุณาตรวจสอบข้อมูลทันที | scam | 40 | WARNING
+['urgency', 'authority']
+
+ปปง. ตรวจพบธุรกรรมผิดปกติ กรุณาคลิกเพื่อตรวจสอบ | scam | 45 | WARNING
+['authority', 'link']
+
+คุณได้รับเงินเยียวยาจากรัฐ กรุณาคลิกลิงก์เพื่อรับสิทธิ์ | scam | 45 | WARNING
+['authority', 'link']
+
+สิทธิ์รัฐของคุณกำลังจะหมดอายุ ตรวจสอบเลย | scam | 45 | WARNING
+['authority', 'link']
+
+พัสดุของคุณไม่สามารถจัดส่งได้ กรุณาติดต่อเจ้าหน้าที่ | scam | 75 | HIGH_RISK
+['authority', 'delivery', 'link']
+
+ขนส่งแจ้งเตือน ไม่สามารถติดต่อผู้รับได้ กรุณายืนยันการจัดส่ง | scam | 20 | BE CAUTIOUS
+['delivery']
+
+เลขแทรกกิ้งของคุณมีปัญหา กรุณาเช็กสถานะพัสดุ | scam | 20 | BE CAUTIOUS
+['delivery']
+
+พัสดุค้างคลัง กรุณาคลิกลิงก์เพื่อยืนยันที่อยู่ | scam | 45 | WARNING
+['delivery', 'link']
+
+ขนส่งแจ้งเตือนการจัดส่งล้มเหลว ติดต่อเจ้าหน้าที่ด่วน | scam | 85 | HIGH_RISK
+['urgency', 'authority', 'delivery', 'link']
+
+คุณได้รับรางวัลเงินสด กรุณาคลิกลิงก์เพื่อรับรางวัล | scam | 55 | WARNING
+['promotion', 'link']
+
+ยินดีด้วย คุณได้รับ iPhone ฟรี ตรวจสอบสิทธิ์เลย | scam | 30 | BE CAUTIOUS
+['promotion']
+
+โปรโมชั่นพิเศษสำหรับคุณเท่านั้น คลิกรับทันที | scam | 50 | WARNING
+['urgency', 'promotion']
+
+โปรเด็ดวันนี้ ฝาก 200 รับ 400 ไม่มีขั้นต่ำ | scam | 50 | WARNING
+['urgency', 'promotion']
+
+ระบบลงทุนอัตโนมัติ กำไรการันตี สมัครเลย | scam | 30 | BE CAUTIOUS
+['promotion']
+
+งานออนไลน์ รายได้ดี ทำที่บ้าน สมัครด่วน | scam | 50 | WARNING
+['urgency', 'promotion']
+
+แบบสอบถามรับเงินรางวัล คลิกลิงก์เพื่อทำแบบสอบถาม | scam | 55 | WARNING
+['promotion', 'link']
+
+คุณได้รับสิทธิ์ทดลองใช้พิเศษ ตรวจสอบที่นี่ | scam | 15 | BE CAUTIOUS
+['link']
+
+บัญชีคะแนนสะสมของคุณกำลังจะหมดอายุวันนี้ | scam | 10 | BE CAUTIOUS
+['urgency']
+
+แจ้งเตือนคะแนนสะสม กรุณาคลิกเพื่อแลกรางวัล | scam | 0 | BE CAUTIOUS
+[]
+
+ยอดค้างชำระค่าธรรมเนียม กรุณาชำระเงินทันที | scam | 40 | WARNING
+['urgency', 'financial_pressure']
+
+แจ้งค่าปรับออนไลน์ กรุณาชำระภายในวันนี้ | scam | 20 | BE CAUTIOUS
+['financial_pressure']
+
+ใบสั่งจราจรออนไลน์ กรุณาตรวจสอบรายละเอียด | scam | 0 | BE CAUTIOUS
+[]
+
+คุณมีวงเงินคงเหลือ กรุณาคลิกลิงก์เพื่อตรวจสอบ | scam | 15 | BE CAUTIOUS
+['link']
+
+ระบบธนาคารแจ้งเตือน กรุณายืนยันความปลอดภัย | scam | 55 | WARNING
+['identity_threat', 'authority']
+
+ธนาคารตรวจพบความผิดปกติ กรุณาคลิกยืนยันตัวตน | scam | 80 | HIGH_RISK
+['identity_threat', 'authority', 'link']
+
+บัญชีธนาคารของคุณจะถูกระงับภายใน 24 ชั่วโมง | scam | 60 | WARNING
+['urgency', 'authority', 'time_pressure']
+
+กรุณาโอนเงินเพื่อป้องกันการระงับบัญชี | scam | 40 | WARNING
+['urgency', 'financial_pressure']
+
+แจ้งเตือนการเข้าถึงผิดปกติ กรุณาตรวจสอบทันที | scam | 70 | HIGH_RISK
+['urgency', 'identity_threat', 'link']
+
+ฝ่ายความปลอดภัยขอให้ยืนยันข้อมูลด่วน | scam | 40 | WARNING
+['urgency', 'authority']
+
+ศูนย์บริการแจ้งเตือน กรุณาติดต่อเจ้าหน้าที่ | scam | 45 | WARNING
+['authority', 'link']
+
+ระบบตรวจพบข้อมูลไม่ถูกต้อง กรุณาอัปเดตข้อมูล | scam | 25 | BE CAUTIOUS
+['identity_threat']
+
+บัญชีของคุณอยู่ระหว่างการตรวจสอบ กรุณาคลิกลิงก์ | scam | 50 | WARNING
+['identity_threat', 'link']
+
+แจ้งเตือนสุดท้าย บัญชีจะถูกปิดใช้งานวันนี้ | scam | 10 | BE CAUTIOUS
+['urgency']
+
+ดำเนินการไม่สำเร็จ กรุณาติดต่อเจ้าหน้าที่ทันที | scam | 65 | WARNING
+['urgency', 'authority', 'link']
+
+แจ้งเตือนจากระบบ บัญชีของคุณมีความเสี่ยงสูง กรุณาคลิกลิงก์เพื่อตรวจสอบ | scam | 50 | WARNING
+['identity_threat', 'link']
+
+บัญชีของท่านถูกจำกัดการใช้งานชั่วคราว กรุณายืนยันตัวตนทันที | scam | 45 | WARNING
+['urgency', 'identity_threat']
+
+ตรวจพบการเข้าสู่ระบบจากอุปกรณ์ใหม่ กรุณาคลิกยืนยันความปลอดภัย | scam | 50 | WARNING
+['identity_threat', 'link']
+
+ฝ่ายกฎหมายแจ้งเตือน กรุณาติดต่อเจ้าหน้าที่เพื่อหลีกเลี่ยงการดำเนินคดี | scam | 45 | WARNING
+['authority', 'link']
+
+ระบบธนาคารตรวจพบการทำรายการผิดปกติ กรุณาตรวจสอบทันที | scam | 65 | WARNING
+['urgency', 'authority', 'link']
+
+แจ้งเตือนด่วน หากไม่ยืนยันตัวตน บัญชีจะถูกระงับ | scam | 45 | WARNING
+['urgency', 'identity_threat']
+
+กรุณาชำระค่าธรรมเนียมเพื่อปลดล็อกบัญชีของคุณ | scam | 55 | WARNING
+['identity_threat', 'financial_pressure']
+
+มีรายการใช้จ่ายผิดปกติ กรุณาคลิกลิงก์เพื่อตรวจสอบรายละเอียด | scam | 15 | BE CAUTIOUS
+['link']
+
+บัญชีของคุณถูกตั้งค่าสถานะเสี่ยง กรุณายืนยันข้อมูล | scam | 25 | BE CAUTIOUS
+['identity_threat']
+
+เจ้าหน้าที่ฝ่ายความปลอดภัยขอให้ตรวจสอบข้อมูลด่วน | scam | 40 | WARNING
+['urgency', 'authority']
+
+คุณมีเงินคืนค้างรับจากระบบ กรุณาคลิกรับเงิน | scam | 30 | BE CAUTIOUS
+['promotion']
+
+แจ้งเตือนสิทธิประโยชน์พิเศษของคุณ ตรวจสอบก่อนหมดอายุ | scam | 0 | BE CAUTIOUS
+[]
+
+พัสดุของคุณถูกตีกลับ กรุณาคลิกเพื่อตั้งเวลาจัดส่งใหม่ | scam | 20 | BE CAUTIOUS
+['delivery']
+
+ไม่สามารถยืนยันที่อยู่จัดส่ง กรุณาติดต่อเจ้าหน้าที่ | scam | 75 | HIGH_RISK
+['authority', 'delivery', 'link']
+
+ระบบขนส่งแจ้งปัญหาการนำส่ง กรุณาเช็กสถานะ | scam | 20 | BE CAUTIOUS
+['delivery']
+
+คุณได้รับโควตาพิเศษสำหรับการลงทุน สมัครก่อนหมดเขต | scam | 0 | BE CAUTIOUS
+[]
+
+รายได้เสริมออนไลน์ รับเงินจริงทุกวัน สมัครด่วน | scam | 10 | BE CAUTIOUS
+['urgency']
+
+โปรพิเศษสมาชิกใหม่ ฝากวันนี้รับโบนัสทันที | scam | 50 | WARNING
+['urgency', 'promotion']
+
+แบบสำรวจสั้น ๆ รับเงินรางวัลทันที | scam | 10 | BE CAUTIOUS
+['urgency']
+
+คุณถูกเลือกให้รับของขวัญพิเศษ กรุณาคลิกรับสิทธิ์ | scam | 0 | BE CAUTIOUS
+[]
+
+แจ้งเตือนคะแนนสะสมใกล้หมดอายุ ตรวจสอบสิทธิ์ | scam | 0 | BE CAUTIOUS
+[]
+
+บัญชีผู้ใช้งานของคุณต้องอัปเดตข้อมูล กรุณาคลิกเพื่อดำเนินการ | scam | 0 | BE CAUTIOUS
+[]
+
+การยืนยันตัวตนล้มเหลว กรุณาทำรายการใหม่ทันที | scam | 45 | WARNING
+['urgency', 'identity_threat']
+
+แจ้งเตือนการทำธุรกรรมล่าสุด กรุณาตรวจสอบเพื่อความปลอดภัย | scam | 0 | BE CAUTIOUS
+[]
+
+ติดต่อด่วน มีปัญหาเกี่ยวกับบัญชีของคุณ | scam | 70 | HIGH_RISK
+['urgency', 'identity_threat', 'link']

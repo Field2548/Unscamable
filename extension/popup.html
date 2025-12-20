@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <div class="header">
+      <div class="warning-icon">⚠</div>
+      <h2 id="riskLevel">Checking...</h2>
+    </div>
+    
+    <div class="content">
+      <div class="risk-section">
+        <h3>Risk Score</h3>
+        <div class="risk-score-display">
+          <div>
+            <span class="risk-number" id="riskScore">-</span>
+            <span class="risk-total">/100</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="factors-section">
+        <h3>Factor Detected</h3>
+        <ul class="factors-list" id="factorsList">
+          <li>Analyzing...</li>
+        </ul>
+      </div>
+
+      <div class="button-container">
+        <button id="closeBtn">Close</button>
+      </div>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

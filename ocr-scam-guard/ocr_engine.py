@@ -1,7 +1,5 @@
 import os
 import re
-from difflib import SequenceMatcher
-
 import cv2
 import numpy as np
 
@@ -40,72 +38,155 @@ def get_ocr_engine():
             use_textline_orientation=True,
             text_det_thresh=0.1,
             text_det_unclip_ratio=2.0,
-            text_det_limit_side_len=3000,
+            text_det_limit_side_len=2000, # Reduced to 2000 for safety
         )
     return _OCR_INSTANCE
 
 
-def upscale_image(img, scale=1.5):
-    return cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+def smart_resize(img):
+    """
+    STRICT RESIZING:
+    Ensures image never exceeds 1800px on the longest side.
+    This prevents memory crashes on large images.
+    """
+    h, w = img.shape[:2]
+    max_dim = max(h, w)
+    
+    # If image is huge (>1800), shrink it down
+    if max_dim > 1800:
+        scale = 1800 / max_dim
+        return cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    
+    # If image is tiny (<800), grow it slightly
+    elif max_dim < 800:
+        return cv2.resize(img, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)
+    
+    return img.copy()
 
 
-def balanced_preprocess(image_input):
-    """Gentle zoom + blur + optional invert for dark UIs."""
-    if isinstance(image_input, str):
-        img = cv2.imread(image_input)
-    else:
-        img = image_input.copy() if image_input is not None else None
-    if img is None:
-        return None, None
+def deskew_image(image, max_angle=12.0):
+    if image is None: return image, 0.0
+    # Optimization: Skip deskew if image is large (too slow)
+    if max(image.shape[:2]) > 1800: return image, 0.0
+    
+    try:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+        _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        thresh = cv2.bitwise_not(thresh)
+        coords = cv2.findNonZero(thresh)
+        if coords is None: return image, 0.0
+        rect = cv2.minAreaRect(coords)
+        angle = rect[-1]
+        if angle < -45: angle = 90 + angle
+        if abs(angle) < 0.1 or abs(angle) > max_angle: return image, 0.0
+        
+        h, w = image.shape[:2]
+        center = (w // 2, h // 2)
+        M = cv2.getRotationMatrix2D(center, angle, 1.0)
+        rotated = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+        return rotated, angle
+    except:
+        return image, 0.0
 
-    img = upscale_image(img)
+def _scale_with_limit(image, scale_factor, max_dim=2200):
+    if image is None: return image
+    h, w = image.shape[:2]
+    longest = max(h, w)
+    target_longest = longest * scale_factor
+    if target_longest > max_dim and longest > 0:
+        scale_factor = max_dim / float(longest)
+    if scale_factor == 1.0:
+        return image.copy()
+    interpolation = cv2.INTER_CUBIC if scale_factor >= 1.0 else cv2.INTER_AREA
+    return cv2.resize(image, None, fx=scale_factor, fy=scale_factor, interpolation=interpolation)
+
+
+def balanced_preprocess(image):
+    """Balanced: gentle 1.5x upscale plus mild blur for Thai scripts."""
+    img = _scale_with_limit(image, 1.5)
     img = cv2.GaussianBlur(img, (3, 3), 0)
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     avg_brightness = float(np.mean(gray))
-
-    if avg_brightness < 100:
-        img = cv2.bitwise_not(img)
-
+    if avg_brightness < 90:
+        inverted = cv2.bitwise_not(img)
+        return inverted, avg_brightness
     return img, avg_brightness
 
 
-def apply_clahe(img):
+def upscaled_preprocess(image):
+    """Upscaled: 2x enlargement using bicubic interpolation for tiny text."""
+    return _scale_with_limit(image, 2.0)
+
+
+def clahe_preprocess(image):
+    """CLAHE: boost local contrast to surface white text in colored bubbles."""
+    img = smart_resize(image)
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-    l_channel, a_channel, b_channel = cv2.split(lab)
+    l, a, b = cv2.split(lab)
     clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-    l_channel = clahe.apply(l_channel)
-    merged = cv2.merge((l_channel, a_channel, b_channel))
-    return cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
+    cl = clahe.apply(l)
+    merged = cv2.merge((cl, a, b))
+    enhanced = cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
+    return cv2.GaussianBlur(enhanced, (3, 3), 0)
 
 
-def apply_unsharp_mask(img):
-    gaussian = cv2.GaussianBlur(img, (0, 0), 3)
-    return cv2.addWeighted(img, 1.5, gaussian, -0.5, 0)
+def unsharp_preprocess(image):
+    """Unsharp Mask: sharpen soft edges to split merged characters."""
+    img = smart_resize(image)
+    blurred = cv2.GaussianBlur(img, (0, 0), 1.5)
+    sharpened = cv2.addWeighted(img, 1.7, blurred, -0.7, 0)
+    return sharpened
 
 
-def apply_adaptive_binary(img):
+def binary_preprocess(image):
+    """Binary: adaptive threshold for crisp digit extraction."""
+    img = smart_resize(image)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 41, 10)
+    binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                   cv2.THRESH_BINARY, 41, 9)
     return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
 
 
 def generate_preprocess_variants(image):
+    """Generate targeted presets to cover varied OCR edge cases."""
     variants = []
-    balanced_img, brightness = balanced_preprocess(image)
-    if balanced_img is not None:
-        variants.append(("balanced", balanced_img))
+    
+    # 1. Check Skew (Run on resized copy to be fast)
+    small_img = smart_resize(image)
+    _, angle = deskew_image(small_img)
+    
+    # We use original image for processing, but deskew if needed
+    if abs(angle) >= 0.5:
+        # Deskew the potentially large image (carefully)
+        base_img, _ = deskew_image(image) 
+    else:
+        base_img = image
 
-    upscaled = upscale_image(image)
-    variants.append(("upscaled", upscaled))
-    variants.append(("clahe", apply_clahe(upscaled)))
-    variants.append(("unsharp", apply_unsharp_mask(upscaled)))
-    variants.append(("binary", apply_adaptive_binary(upscaled)))
+    # 2. Variant A: Balanced (General Purpose)
+    balanced_img, brightness = balanced_preprocess(base_img)
+    variants.append(("balanced", balanced_img))
+
+    # Upscaled variant aimed at tiny timestamps or UI text
+    upscaled_img = upscaled_preprocess(base_img)
+    variants.append(("upscaled", upscaled_img))
+
+    # CLAHE variant highlights light text within colored bubbles
+    clahe_img = clahe_preprocess(base_img)
+    variants.append(("clahe", clahe_img))
+
+    # Unsharp mask variant helps with soft-focus captures
+    unsharp_img = unsharp_preprocess(base_img)
+    variants.append(("unsharp", unsharp_img))
+
+    # Binary variant remains focused on numeric clarity
+    binary_img = binary_preprocess(base_img)
+    variants.append(("binary", binary_img))
 
     return variants, brightness
 
 def merge_lines(boxes, texts, y_threshold=15): 
-    # Adjusted threshold for 1.5x scale
     if not boxes or not texts: return []
     lines = []
     for box, text in zip(boxes, texts):
@@ -152,35 +233,26 @@ def extract_name(text_list):
         is_name = False
 
         for prefix in NAME_PREFIXES:
-            if not clean_line.startswith(prefix):
-                continue
-
+            if not clean_line.startswith(prefix): continue
+            
+            # Logic to grab next line if prefix stands alone
             if len(clean_line) < len(prefix) + 2 and i + 1 < len(text_list):
-                combined = normalize_name_text(f"{line} {text_list[i + 1]}")
-                if combined:
-                    possible_names.append(combined)
+                possible_names.append(f"{line} {text_list[i+1]}")
             else:
-                cleaned = normalize_name_text(line)
-                if cleaned:
-                    possible_names.append(cleaned)
+                possible_names.append(line)
             is_name = True
             break
 
-        if is_name:
-            continue
+        if is_name: continue
 
         if "ชื่อบัญชี" in clean_line or "account name" in clean_line:
             name_part = line.replace("ชื่อบัญชี", "").replace("account name", "").strip()
-            cleaned = normalize_name_text(name_part)
-            if cleaned:
-                possible_names.append(cleaned)
+            if name_part: possible_names.append(name_part)
             continue
 
         for keyword in business_keywords:
             if keyword in clean_line:
-                cleaned = normalize_name_text(line)
-                if cleaned:
-                    possible_names.append(cleaned)
+                possible_names.append(line)
                 break
 
     return possible_names
@@ -189,136 +261,17 @@ def clean_ocr_items(items):
     cleaned = []
     for item in items:
         text = re.sub(r'\s+[a-zA-Z]$', '', item['text'])
-        if re.match(r'^[A-Z]{5,}$', text):
-            continue
+        if re.match(r'^[A-Z]{5,}$', text): continue
         text = text.strip()
-        if not text:
-            continue
+        if not text: continue
         cleaned.append({**item, 'text': text})
     return cleaned
 
+def dedupe_line_tokens(line):
+    return line
 
-def dedupe_line_tokens(line, threshold=0.9, window=2):
-    tokens = line.split()
-    if not tokens:
-        return line
-
-    cleaned_tokens = []
-    for token in tokens:
-        lowered = token.lower()
-        is_duplicate = False
-        for prev in cleaned_tokens[-window:]:
-            if SequenceMatcher(None, lowered, prev.lower()).ratio() >= threshold:
-                is_duplicate = True
-                break
-        if not is_duplicate:
-            cleaned_tokens.append(token)
-    return " ".join(cleaned_tokens)
-
-
-def has_mixed_scripts(token):
-    has_thai = any(0x0E00 <= ord(ch) <= 0x0E7F for ch in token)
-    has_latin = any('a' <= ch.lower() <= 'z' for ch in token if ch.isalpha())
-    return has_thai and has_latin
-
-
-def is_short_ascii_noise(token):
-    if not token.isalpha():
-        return False
-    lowered = token.lower()
-    if lowered in NAME_PREFIX_LOWER:
-        return False
-    if len(token) <= 3:
-        upper_ratio = sum(1 for ch in token if ch.isupper()) / len(token)
-        vowel_present = any(ch in "aeiou" for ch in lowered)
-        if upper_ratio >= 0.6 and not vowel_present:
-            return True
-    return False
-
-
-def sanitize_line(line, alnum_mix_max=8):
-    cleaned_tokens = []
-    prefix_seen = False
-    seen_numeric = set()
-    seen_lower = set()
-    for token in line.split():
-        trimmed = token.strip()
-        if not trimmed:
-            continue
-        lowered = trimmed.lower()
-        if lowered in NAME_PREFIX_LOWER:
-            if prefix_seen:
-                break
-            prefix_seen = True
-        if has_mixed_scripts(trimmed):
-            continue
-        if re.fullmatch(r"[-–—]+", trimmed):
-            continue
-        if trimmed.isdigit() and len(trimmed) == 1:
-            continue
-        if re.search(r"[A-Za-z]", trimmed) and re.search(r"\d", trimmed) and len(trimmed) <= alnum_mix_max:
-            continue
-        if is_short_ascii_noise(trimmed):
-            continue
-        if any(ch.isdigit() for ch in trimmed):
-            if trimmed in seen_numeric:
-                continue
-            seen_numeric.add(trimmed)
-        else:
-            if lowered in seen_lower and len(trimmed) > 1:
-                continue
-            seen_lower.add(lowered)
-        cleaned_tokens.append(trimmed)
-    return " ".join(cleaned_tokens)
-
-
-def normalize_name_text(text):
-    tokens = []
-    for raw_token in text.split():
-        token = raw_token.strip()
-        if not token:
-            continue
-
-        lowered = token.lower()
-        if lowered in NAME_PREFIX_LOWER and tokens:
-            break
-
-        if any(ch.isdigit() for ch in token):
-            continue
-        if len(token) == 1 and re.match(r"[A-Za-zก-๙]", token):
-            continue
-        if has_mixed_scripts(token):
-            break
-        if not re.search(r"[A-Za-zก-๙]", token):
-            continue
-
-        if is_short_ascii_noise(token):
-            continue
-
-        tokens.append(token)
-
-    return " ".join(tokens).strip()
-
-
-def aggregate_variant_lines(variants, y_threshold=15):
-    if not variants:
-        return []
-
-    position_map = {}
-    for variant in variants:
-        for item in variant['items']:
-            key = (round(item['y'] / 12), round(item['x'] / 12))
-            stored = position_map.get(key)
-            if stored is None or item['score'] > stored['score']:
-                position_map[key] = item
-
-    if not position_map:
-        return []
-
-    chosen = sorted(position_map.values(), key=lambda it: (it['y'], it['x']))
-    boxes = [item['box'] for item in chosen]
-    texts = [item['text'] for item in chosen]
-    return merge_lines(boxes, texts, y_threshold=y_threshold)
+def sanitize_line(line):
+    return line.strip()
 
 # --- 4. MAIN EXECUTION ---
 
@@ -327,116 +280,74 @@ def run_ocr_scan(image_path=None):
     else: target_path = image_path
 
     if not os.path.exists(target_path):
-        print(f"❌ Error: Cannot find '{target_path}'")
         return {"status": "error", "message": "File not found"}
 
-    print(f"🔍 Scanning '{target_path}'...")
+    # print(f"🔍 Scanning '{target_path}'...") # Optional: uncomment if you want logs
 
     base_img = cv2.imread(target_path)
     if base_img is None:
-        print("❌ Error: Unable to read image data.")
         return {"status": "error", "message": "Unreadable image"}
 
+    # 1. Preprocess (Fast Mode)
     variants, brightness = generate_preprocess_variants(base_img)
-    if brightness is not None:
-        if brightness < 100:
-            print(f"   🌑 Dark Mode Detected ({brightness:.0f}) -> Inverting & smoothing.")
-        else:
-            print(f"   ☀️ Light Mode Detected ({brightness:.0f}) -> Smoothing & gentle zoom.")
-
+    
     ocr = get_ocr_engine()
-
     variant_results = []
-    for label, variant_img in variants:
+
+    # 2. Run OCR Loop with Progress Bar
+    total_variants = len(variants)
+    for i, (label, variant_img) in enumerate(variants):
+        print(f"   👉 Processing variant {i+1}/{total_variants}: {label}...")
+        
         ocr_output = ocr.predict(variant_img)
-        if not ocr_output:
-            continue
+        if not ocr_output: continue
 
         data = ocr_output[0]
-        texts_raw = data.get('rec_texts') or []
-        scores_raw = data.get('rec_scores') or []
-        boxes_raw = data.get('rec_polys') or data.get('rec_boxes') or []
+        if not data: continue
+        
+        # Safe extraction
+        texts_raw = data.get('rec_texts') if data.get('rec_texts') is not None else []
+        scores_raw = data.get('rec_scores') if data.get('rec_scores') is not None else []
+        boxes_raw = data.get('rec_polys') if data.get('rec_polys') is not None else (data.get('rec_boxes') if data.get('rec_boxes') is not None else [])
 
         items = []
-        for box, text, score in zip(boxes_raw, texts_raw, scores_raw):
-            if text is None:
-                continue
-            pts = np.asarray(box, dtype=float)
+        count = min(len(boxes_raw), len(texts_raw), len(scores_raw))
+        
+        for k in range(count):
+            pts = np.asarray(boxes_raw[k], dtype=float)
             y_center = float(np.mean(pts[:, 1]))
             x_center = float(np.mean(pts[:, 0]))
-            items.append({
-                'box': pts.tolist(),
-                'text': text,
-                'score': float(score),
-                'y': y_center,
-                'x': x_center,
-            })
+            items.append({'box': pts.tolist(), 'text': texts_raw[k], 'score': float(scores_raw[k]), 'y': y_center, 'x': x_center})
 
         cleaned_items = clean_ocr_items(items)
-        if not cleaned_items:
-            continue
+        if not cleaned_items: continue
 
         boxes = [item['box'] for item in cleaned_items]
         texts = [item['text'] for item in cleaned_items]
         merged_lines = merge_lines(boxes, texts, y_threshold=15)
 
-        avg_score = sum(item['score'] for item in cleaned_items) / len(cleaned_items)
-        quality = avg_score + len(merged_lines) * 0.01
-
+        avg_score = sum(item['score'] for item in cleaned_items) / len(cleaned_items) if cleaned_items else 0
+        
         variant_results.append({
             'label': label,
             'lines': merged_lines,
-            'items': cleaned_items,
-            'quality': quality,
+            'quality': avg_score,
         })
 
     if not variant_results:
-        print("❌ No text found.")
         return {"status": "empty", "data": {}}
 
+    # 3. Pick Winner
     best_variant = max(variant_results, key=lambda v: v['quality'])
-    print(f"   ✅ Using '{best_variant['label']}' preprocessing (confidence score {best_variant['quality']:.2f}).")
-
-    combined_lines = aggregate_variant_lines(variant_results)
-    clean_lines = best_variant['lines'] if best_variant['lines'] else []
-    if combined_lines and len(combined_lines) <= len(clean_lines) + 3:
-        clean_lines = combined_lines
-    clean_lines = [sanitize_line(dedupe_line_tokens(line)) for line in clean_lines]
-    clean_lines = [line for line in clean_lines if line]
+    
+    clean_lines = best_variant['lines']
     full_text_blob = " ".join(clean_lines)
     clean_text_blob = full_text_blob.replace("-", "").replace(" ", "")
 
     account_numbers = re.findall(r'\d{10,12}', clean_text_blob)
     banks = extract_bank(clean_lines)
-    names = [dedupe_line_tokens(name, threshold=0.85) for name in extract_name(clean_lines)]
+    names = [dedupe_line_tokens(name) for name in extract_name(clean_lines)]
     names = [name for name in names if name]
-
-    # 5. Final Report
-    print("\n" + "="*40)
-    print("       🕵️ SCAM GUARD INTELLIGENCE 🕵️")
-    print("="*40)
-    
-    has_relevant_data = False
-
-    if banks:
-        print(f"🏦 Bank Mentioned:   {banks}")
-        has_relevant_data = True
-    if names:
-        print(f"👤 Name Found:       {names}")
-        has_relevant_data = True
-    if account_numbers:
-        print(f"🚨 ACCOUNT FOUND:    {account_numbers}")
-        print("   (⚠️ High Risk: Send to Blacklist Check)")
-        has_relevant_data = True
-    
-    if not has_relevant_data:
-        print("ℹ️  No banking details detected.")
-
-    print("-" * 40)
-    print("📜 SCANNED TEXT:")
-    for line in clean_lines:
-        print(f"📄 {line}")
-    print("="*40 + "\n")
 
     return {
         "status": "success",
@@ -444,10 +355,20 @@ def run_ocr_scan(image_path=None):
             "banks": banks,
             "names": names,
             "accounts": account_numbers,
-            "raw_text": clean_lines,
-            "preprocessing": best_variant['label'],
+            "raw_text": clean_lines
         }
     }
 
 if __name__ == "__main__":
-    run_ocr_scan('test_slip.png')
+    result = run_ocr_scan('test_slip.png')
+    print("\n" + "="*40)
+    print("       🕵️ SCAM GUARD INTELLIGENCE 🕵️")
+    print("="*40)
+    if result['status'] == 'success':
+        print(f"🏦 Bank: {result['data']['banks']}")
+        print(f"👤 Name: {result['data']['names']}")
+        print(f"🚨 Account: {result['data']['accounts']}")
+        print("-" * 40)
+        print("📜 RAW TEXT:")
+        for line in result['data']['raw_text']:
+            print(f"📄 {line}")

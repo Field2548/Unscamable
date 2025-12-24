@@ -27,16 +27,25 @@ def test_all_images():
         result = run_ocr_scan(full_path)
         
         # Print a quick summary
-        if result['status'] == 'success':
+        status = result.get('status')
+        if status == 'success':
             data = result['data']
             print(f"   ✅ Bank: {data['banks']}")
             print(f"   ✅ Name: {data['names']}")
+            raw_text = data.get('raw_text') or []
+            if raw_text:
+                print("   📜 Raw Text:")
+                for line in raw_text:
+                    print(f"      • {line}")
             
             # Simple Pass/Fail Logic
             if data['accounts']:
                 print(f"   🚨 ACCOUNT FOUND: {data['accounts']} (SCAM TRIGGERED)")
             else:
                 print("   ℹ️  No Account Found (Safe/Info Only)")
+        elif status == 'empty':
+            message = result.get('message', 'No readable text detected.')
+            print(f"   ⚪ {message}")
         else:
             print(f"   ❌ Error: {result.get('message', 'Unknown error')}")
             

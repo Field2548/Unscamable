@@ -74,12 +74,14 @@ def calculate_risk(text, entities):
 
 
 def get_status(score):
-    if score >= 70:
+    if score > 70: #71-100
         return {"status": "High Risk", "color": "#FF5252"}
-    elif score >= 40:
+    elif score > 40: #41-70
         return {"status": "Warning", "color": "#FFA726"}
-    else:
+    elif score > 0: #1-40
         return {"status": "Be cautious", "color": "#9A9C49"}
+    else:
+        return {"status": "Safe", "color": "#4CAF50"}
 
 @app.route('/analyze', methods=['POST'])
 def analyze():

@@ -79,7 +79,7 @@ def get_status(score):
     elif score > 40: #41-70
         return {"status": "Warning", "color": "#FFA726"}
     elif score > 0: #1-40
-        return {"status": "Be cautious", "color": "#9A9C49"}
+        return {"status": "Be cautious", "color": "#DECA30"}
     else:
         return {"status": "Safe", "color": "#4CAF50"}
 

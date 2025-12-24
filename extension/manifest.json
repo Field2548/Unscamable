@@ -7,16 +7,16 @@
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["http://localhost:5000/*"], 
   "icons": {
-    "16": "icons/icon16.png",
-    "32": "icons/icon32.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+    "16": "icons/logo-home16.png",
+    "32": "icons/logo-home32.png",
+    "48": "icons/logo-home48.png",
+    "128": "icons/logo-home128.png"
   },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "icons/icon16.png",
-      "32": "icons/icon32.png"
+      "16": "icons/logo-ext16.png",
+      "32": "icons/logo-ext32.png"
     }
   },
   "content_scripts": [{

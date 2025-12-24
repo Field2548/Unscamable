@@ -30,7 +30,14 @@
       </div>
 
       <div class="button-container">
-        <button id="closeBtn">Close</button>
+        <div class="toggle-wrap">
+          <label class="switch" aria-label="Enable analysis">
+            <input type="checkbox" id="toggleSwitch" />
+            <span class="slider"></span>
+          </label>
+          <span id="toggleLabel" class="toggle-label">On</span>
+        </div>
+        <button id="closeBtn" class="btn btn-close">Close</button>
       </div>
     </div>
   </div>

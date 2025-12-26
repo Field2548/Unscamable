@@ -330,10 +330,23 @@ async function initializeExtension() {
 initializeExtension();
 
 /**
+ * Open the extension popup
+ */
+async function openPopup() {
+  try {
+    await chrome.action.openPopup();
+    console.log('[State Manager] Popup opened');
+  } catch (error) {
+    console.error('[State Manager] Error opening popup:', error);
+  }
+}
+
+/**
  * Listen for messages from popup or content scripts
  * Supported messages:
  * - { action: 'setState', state: 'idle' | 'scanning' | 'safe' | 'cautious' | 'warning' | 'highRisk' }
  * - { action: 'getState' }
+ * - { action: 'openPopup' }
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'setState') {
@@ -383,10 +396,114 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       isScanning: isScanning(),
     });
   }
+
+  if (request.action === 'openPopup') {
+    openPopup().then(() => sendResponse({ success: true }));
+    return true; // Keep message channel open for async response
+  }
 });
 
 // ============================================================================
-// EXAMPLE: EXTENSION ICON CLICK HANDLER
+// AUTO-SCAN FUNCTIONALITY
+// ============================================================================
+
+/**
+ * Analyze text from a tab by sending a message to content script
+ * @param {number} tabId - The tab ID to analyze
+ */
+async function analyzeTabContent(tabId) {
+  try {
+    // Check if extension is enabled
+    const result = await chrome.storage.local.get({ extensionEnabled: true });
+    if (!result.extensionEnabled) {
+      console.log('[Auto-Scan] Extension is disabled, skipping analysis');
+      return;
+    }
+
+    // Start scanning state
+    await startScanningState();
+
+    // Send message to content script to get text
+    chrome.tabs.sendMessage(tabId, { action: 'analyze_text' }, async (response) => {
+      if (chrome.runtime.lastError) {
+        console.log('[Auto-Scan] Could not send message to tab:', chrome.runtime.lastError);
+        await setIdleState();
+        return;
+      }
+
+      if (!response || response.paused) {
+        console.log('[Auto-Scan] Extension is paused or no response');
+        await setIdleState();
+        return;
+      }
+
+      try {
+        // Send text to backend for analysis
+        const serverResponse = await fetch('http://localhost:5000/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: response.text, image: '' })
+        });
+
+        const analysisResult = await serverResponse.json();
+        const riskScore = analysisResult.risk_score || 0;
+
+        // Update extension state based on risk score
+        if (riskScore > 70) {
+          await setHighRiskState();
+          console.log('[Auto-Scan] High risk detected! Score:', riskScore);
+        } else if (riskScore > 40) {
+          await setWarningState();
+          console.log('[Auto-Scan] Warning detected. Score:', riskScore);
+        } else if (riskScore > 0) {
+          await setCautiousState();
+          console.log('[Auto-Scan] Caution recommended. Score:', riskScore);
+        } else {
+          await setSafeState();
+          console.log('[Auto-Scan] Page is safe. Score:', riskScore);
+        }
+
+        // Reset to idle after 10 seconds
+        setTimeout(async () => {
+          await setIdleState();
+          console.log('[Auto-Scan] Reset to idle state');
+        }, 10000);
+      } catch (error) {
+        console.error('[Auto-Scan] Error analyzing content:', error);
+        await setIdleState();
+      }
+    });
+  } catch (error) {
+    console.error('[Auto-Scan] Error in analyzeTabContent:', error);
+    await setIdleState();
+  }
+}
+
+/**
+ * Listen for tab updates and auto-scan if enabled
+ */
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // Only scan when page is loaded and not a Chrome system page
+  if (changeInfo.status === 'complete' && tab.url && !tab.url.startsWith('chrome://')) {
+    console.log('[Auto-Scan] Tab updated and loaded:', tab.url);
+    analyzeTabContent(tabId);
+  }
+});
+
+/**
+ * Listen for tab activation and auto-scan if enabled
+ */
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  chrome.tabs.get(activeInfo.tabId, (tab) => {
+    if (tab && tab.url && !tab.url.startsWith('chrome://')) {
+      console.log('[Auto-Scan] Tab activated:', tab.url);
+      analyzeTabContent(activeInfo.tabId);
+    }
+  });
+});
+
+// ============================================================================
+// EXTENSION ICON CLICK HANDLER
 // ============================================================================
 
 /**
@@ -406,7 +523,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       const randomScore = Math.random() * 100;
 
       if (randomScore > 40) {
-        await setRiskState();
+        await setWarningState();
         console.log('[State Manager] Analysis complete - Risk detected');
       } else {
         await setSafeState();

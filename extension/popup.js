@@ -152,8 +152,9 @@ function displayResult(result) {
   // Be cautious (0 < score <= 40): Yellow warning icon with "!" (yellow badge)
   // Warning (40 < score <= 70): Orange warning icon with "!" (orange badge)
   // High Risk (score > 70): Red warning icon with "!" (red badge)
-  if (riskScore > 70) {
+  if (riskScore > 60) {
     chrome.runtime.sendMessage({ action: 'setState', state: 'highrisk' });
+    autoOpenPopupIfHighRisk(riskScore);
   } else if (riskScore > 40) {
     chrome.runtime.sendMessage({ action: 'setState', state: 'warning' });
   } else if (riskScore > 0) {
@@ -193,6 +194,19 @@ function displayResult(result) {
     const li = document.createElement('li');
     li.textContent = `Blacklisted Account: ${result.entities_found[0]}`;
     factorsList.appendChild(li);
+  }
+}
+
+// Auto-open popup for high risk
+function autoOpenPopupIfHighRisk(riskScore) {
+  // Only auto-open if risk score is high risk (> 70) and popup is not already open
+  if (riskScore > 60) {
+    // Send message to service worker to confirm high risk detected
+    chrome.runtime.sendMessage({ action: 'openPopup' }, (response) => {
+      if (response && response.success) {
+        console.log('High risk popup auto-opened');
+      }
+    });
   }
 }
 

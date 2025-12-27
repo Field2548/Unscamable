@@ -19,6 +19,10 @@ REGEX_WEIGHT = {
 # Chat Extraction regex patterns
 TIMESTAMP_REGEX = re.compile(r"\b\d{1,2}:\d{2}\s?(AM|PM)?\b", re.IGNORECASE)
 DATE_REGEX = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b")
+SENDER_PREFIX_REGEX = re.compile(
+    r"^(you|me|admin|system|support|customer|agent|facebook|messenger|ฉัน|ผม|เรา|คุณ)\s*[:\-]\s*",
+    re.IGNORECASE
+)
 #
 
 # Chat Normalization regex patterns 
@@ -34,3 +38,5 @@ EMOJI_REGEX = re.compile(
 REPEATED_PUNCT = re.compile(r"([!?.]){2,}")
 POLITE_PARTICLES = re.compile(r"(ครับ|ค่ะ|นะครับ|นะคะ)")
 #
+
+URL_REGEX = re.compile(r"https?://\S+|bit\.ly/\S+")

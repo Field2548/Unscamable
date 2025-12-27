@@ -6,7 +6,7 @@ try:
     from .scam_messages import MESSAGES
 except ImportError:  # running as standalone script
     from risk_score_message import calculate_message_risk_score
-    from NLP.classify_scam_message import classify_risk
+    from classify_scam_message import classify_risk
     from scam_messages import MESSAGES
 
 output_lines = []

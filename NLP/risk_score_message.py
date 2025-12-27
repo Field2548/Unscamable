@@ -2,10 +2,10 @@ from typing import List, Tuple
 
 try:
     from .scam_keywords import CATEGORIES
-    from .Regex import REGEX, REGEX_WEIGHT
+    from ._regex import REGEX, REGEX_WEIGHT
 except ImportError:  # fallback when running as a loose script
     from scam_keywords import CATEGORIES
-    from Regex import REGEX, REGEX_WEIGHT
+    from _regex import REGEX, REGEX_WEIGHT
 
 
 def _normalize(text: str) -> str:

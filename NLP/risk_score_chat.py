@@ -118,20 +118,3 @@ def build_output(chat, final_score, repeated_categories, escalated):
         "detected_categories": format_detected_categories(chat.category_counts),
         "reason": build_reason(chat, repeated_categories, escalated)
     }
-
-
-chat = [
-    "พัสดุของคุณไม่สามารถจัดส่งได้",
-    "กรุณายืนยันที่อยู่",
-    "หากไม่ดำเนินการวันนี้ พัสดุจะถูกตีกลับ"
-]
-
-risk = analyze_chat(chat)
-print(risk)
-
-chat2 = ["ยังไม่ชำระค่าปรับจราจร ดูรายละเอียด",
-	"คุณมียอดค้างชำระ 5,000 บาท จ่ายบิล",
-	"คุณมียอดค้างชำระ 7,000 บาท ติดต่อ",
-	"คุณมีวงเงินเหลือ ตรวจสอบที่"]
-risk = analyze_chat(chat2)
-print("chat2 result =", risk)

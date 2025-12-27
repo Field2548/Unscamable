@@ -1,0 +1,7 @@
+# Ignore venv anywhere in the project
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/.DS_Store
+*.log
+ocr-scam-guard/.venv/

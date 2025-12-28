@@ -5,7 +5,7 @@
  * States:
  * - idle: Default icon, no badge
  * - scanning: Animated icon with "SCAN" blue badge
- * - safe: Green checkmark with "✓" green badge
+ * - safe: Green checkmark with "OK" green badge
  * - risk: Yellow warning with "!" yellow badge
  */
 
@@ -14,20 +14,17 @@
 // ============================================================================
 
 let currentState = 'idle';
-let animationInterval = null;
-let currentFrameIndex = 0;
+let lastHighRiskPopupTs = 0;
+const HIGH_RISK_POPUP_COOLDOWN_MS = 30000; // throttle repeated popups
 
-// PNG frame animation files (update paths based on your icon structure)
-const ANIMATION_FRAMES = [
-  'icons/loading-frame-1.png',
-  'icons/loading-frame-2.png',
-  'icons/loading-frame-3.png',
-  'icons/loading-frame-4.png',
-  'icons/loading-frame-5.png',
-  'icons/loading-frame-6.png',
-  'icons/loading-frame-7.png',
-  'icons/loading-frame-8.png',
-];
+// Scanning icon (static PNG to satisfy Chrome icon requirements)
+const SCANNING_ICON = {
+  16: 'icons/logo-ext16.png',
+  32: 'icons/logo-ext32.png',
+};
+
+// Backend endpoint for analysis (override via storage if needed)
+const DEFAULT_ANALYZE_URL = 'http://localhost:5000/analyze';
 
 // Icon paths configuration
 const ICON_CONFIG = {
@@ -47,8 +44,8 @@ const ICON_CONFIG = {
 
 // Badge configuration
 const BADGE_CONFIG = {
-  IDLE: { text: '', color: '#FFFFFF' },
-  SAFE: { text: '✓', color: '#4CAF50' },
+  IDLE: { text: '', color: '#00000000' },
+  SAFE: { text: 'OK', color: '#4CAF50' },
   CAUTIOUS: { text: '!', color: '#FFEB3B' },
   WARNING: { text: '!', color: '#FFA726' },
   HIGH_RISK: { text: '!', color: '#FF5252' },
@@ -66,19 +63,14 @@ const BADGE_CONFIG = {
  * - No animation
  */
 async function setIdleState() {
-  // Stop any running animation
-  if (animationInterval) {
-    clearInterval(animationInterval);
-    animationInterval = null;
-  }
-
   currentState = 'idle';
 
   try {
     await chrome.action.setIcon({ path: ICON_CONFIG.IDLE });
     await chrome.action.setBadgeText({ text: BADGE_CONFIG.IDLE.text });
+    await chrome.action.setBadgeBackgroundColor({ color: BADGE_CONFIG.IDLE.color });
     await chrome.action.setTitle({ title: 'Unscamable AI - Ready' });
-    console.log('[State Manager] ✓ State changed to: IDLE');
+    console.log('[State Manager] OK State changed to: IDLE');
   } catch (error) {
     console.error('[State Manager] Error setting idle state:', error);
   }
@@ -86,30 +78,15 @@ async function setIdleState() {
 
 /**
  * Set the extension to SCANNING state
- * - Shows animated rotating icon using PNG frames
- * - Frames switch every 150ms
+ * - Shows animated loading icon
  * - Displays blue "SCAN" badge
- * - Prevents multiple simultaneous scanning intervals
  */
 async function startScanningState() {
-  // Prevent multiple scanning intervals
-  if (animationInterval) {
-    console.warn('[State Manager] ⚠ Scanning already in progress');
-    return;
-  }
-
   currentState = 'scanning';
-  currentFrameIndex = 0;
 
   try {
-    // Set initial scanning icon (first frame)
-    const firstFrame = ANIMATION_FRAMES[0];
-    await chrome.action.setIcon({
-      path: {
-        16: firstFrame,
-        32: firstFrame,
-      },
-    });
+    // Set animated scanning icon
+    await chrome.action.setIcon({ path: SCANNING_ICON });
 
     await chrome.action.setBadgeText({ text: BADGE_CONFIG.SCANNING.text });
     await chrome.action.setBadgeBackgroundColor({
@@ -117,56 +94,19 @@ async function startScanningState() {
     });
     await chrome.action.setTitle({ title: 'Unscamable AI - Scanning...' });
 
-    // Start frame animation - switch every 150ms
-    animationInterval = setInterval(async () => {
-      if (currentState === 'scanning') {
-        // Cycle through animation frames
-        currentFrameIndex = (currentFrameIndex + 1) % ANIMATION_FRAMES.length;
-        const frame = ANIMATION_FRAMES[currentFrameIndex];
-
-        try {
-          await chrome.action.setIcon({
-            path: {
-              16: frame,
-              32: frame,
-            },
-          });
-        } catch (error) {
-          console.error('[State Manager] Error updating animation frame:', error);
-        }
-      } else {
-        // Stop animation if state changed
-        if (animationInterval) {
-          clearInterval(animationInterval);
-          animationInterval = null;
-        }
-      }
-    }, 150); // Update frame every 150ms
-
-    console.log('[State Manager] ✓ State changed to: SCANNING (animation started)');
+    console.log('[State Manager] OK State changed to: SCANNING');
   } catch (error) {
     console.error('[State Manager] Error starting scanning state:', error);
-    // Clean up on error
-    if (animationInterval) {
-      clearInterval(animationInterval);
-      animationInterval = null;
-    }
   }
 }
 
 /**
  * Set the extension to SAFE state
  * - Shows green checkmark icon
- * - Displays green "✓" badge
+ * - Displays green "OK" badge
  * - Used when risk score is 0 (Safe)
  */
 async function setSafeState() {
-  // Stop any running animation
-  if (animationInterval) {
-    clearInterval(animationInterval);
-    animationInterval = null;
-  }
-
   currentState = 'safe';
 
   try {
@@ -176,35 +116,7 @@ async function setSafeState() {
       color: BADGE_CONFIG.SAFE.color,
     });
     await chrome.action.setTitle({ title: 'Unscamable AI - Safe' });
-    console.log('[State Manager] ✓ State changed to: SAFE');
-  } catch (error) {
-    console.error('[State Manager] Error setting safe state:', error);
-  }
-}
-
-/**
- * Set the extension to SAFE state
- * - Shows green safe icon
- * - Displays green "✓" badge
- * - Used when risk score is 0 (Safe)
- */
-async function setSafeState() {
-  // Stop any running animation
-  if (animationInterval) {
-    clearInterval(animationInterval);
-    animationInterval = null;
-  }
-
-  currentState = 'safe';
-
-  try {
-    await chrome.action.setIcon({ path: ICON_CONFIG.SAFE });
-    await chrome.action.setBadgeText({ text: BADGE_CONFIG.SAFE.text });
-    await chrome.action.setBadgeBackgroundColor({
-      color: BADGE_CONFIG.SAFE.color,
-    });
-    await chrome.action.setTitle({ title: 'Unscamable AI - Safe' });
-    console.log('[State Manager] ✓ State changed to: SAFE (Green)');
+    console.log('[State Manager] OK State changed to: SAFE');
   } catch (error) {
     console.error('[State Manager] Error setting safe state:', error);
   }
@@ -217,12 +129,6 @@ async function setSafeState() {
  * - Used when risk score is low (0 < score <= 40)
  */
 async function setCautiousState() {
-  // Stop any running animation
-  if (animationInterval) {
-    clearInterval(animationInterval);
-    animationInterval = null;
-  }
-
   currentState = 'cautious';
 
   try {
@@ -232,7 +138,7 @@ async function setCautiousState() {
       color: BADGE_CONFIG.CAUTIOUS.color,
     });
     await chrome.action.setTitle({ title: 'Unscamable AI - Be Cautious' });
-    console.log('[State Manager] ✓ State changed to: CAUTIOUS (Yellow)');
+    console.log('[State Manager] OK State changed to: CAUTIOUS (Yellow)');
   } catch (error) {
     console.error('[State Manager] Error setting cautious state:', error);
   }
@@ -245,12 +151,6 @@ async function setCautiousState() {
  * - Used when risk score is in warning range (40 < score <= 70)
  */
 async function setWarningState() {
-  // Stop any running animation
-  if (animationInterval) {
-    clearInterval(animationInterval);
-    animationInterval = null;
-  }
-
   currentState = 'warning';
 
   try {
@@ -260,7 +160,7 @@ async function setWarningState() {
       color: BADGE_CONFIG.WARNING.color,
     });
     await chrome.action.setTitle({ title: 'Unscamable AI - Warning' });
-    console.log('[State Manager] ✓ State changed to: WARNING (Orange)');
+    console.log('[State Manager] OK State changed to: WARNING (Orange)');
   } catch (error) {
     console.error('[State Manager] Error setting warning state:', error);
   }
@@ -273,12 +173,6 @@ async function setWarningState() {
  * - Used when risk score is high (> 70)
  */
 async function setHighRiskState() {
-  // Stop any running animation
-  if (animationInterval) {
-    clearInterval(animationInterval);
-    animationInterval = null;
-  }
-
   currentState = 'highRisk';
 
   try {
@@ -288,7 +182,7 @@ async function setHighRiskState() {
       color: BADGE_CONFIG.HIGH_RISK.color,
     });
     await chrome.action.setTitle({ title: 'Unscamable AI - High Risk' });
-    console.log('[State Manager] ✓ State changed to: HIGH RISK (Red)');
+    console.log('[State Manager] OK State changed to: HIGH RISK (Red)');
   } catch (error) {
     console.error('[State Manager] Error setting high risk state:', error);
   }
@@ -297,6 +191,24 @@ async function setHighRiskState() {
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
+
+/**
+ * Show popup for high-risk result (throttled, uses extension action popup)
+ */
+async function showHighRiskPopup() {
+  const now = Date.now();
+  if (now - lastHighRiskPopupTs < HIGH_RISK_POPUP_COOLDOWN_MS) {
+    return;
+  }
+  lastHighRiskPopupTs = now;
+
+  try {
+    await chrome.action.openPopup();
+    console.log('[State Manager] High-risk popup opened');
+  } catch (error) {
+    console.error('[State Manager] Error opening high-risk popup:', error);
+  }
+}
 
 /**
  * Get the current state of the extension
@@ -311,7 +223,7 @@ function getCurrentState() {
  * @returns {boolean} True if scanning state is active with animation
  */
 function isScanning() {
-  return currentState === 'scanning' && animationInterval !== null;
+  return currentState === 'scanning';
 }
 
 /**
@@ -438,19 +350,34 @@ async function analyzeTabContent(tabId) {
       }
 
       try {
-        // Send text to backend for analysis
-        const serverResponse = await fetch('http://localhost:5000/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: response.text, image: '' })
-        });
+        // Resolve backend URL (allow override via storage)
+        const { analyzeUrl = DEFAULT_ANALYZE_URL } = await chrome.storage.local.get({ analyzeUrl: DEFAULT_ANALYZE_URL });
 
-        const analysisResult = await serverResponse.json();
+        let analysisResult = { risk_score: 0 };
+        try {
+          const serverResponse = await fetch(analyzeUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: response.text, image: '' }),
+          });
+
+          if (!serverResponse.ok) {
+            throw new Error(`HTTP ${serverResponse.status}`);
+          }
+
+          analysisResult = await serverResponse.json();
+        } catch (fetchError) {
+          console.warn('[Auto-Scan] Backend unreachable, skipping analysis:', fetchError);
+          await setIdleState();
+          return;
+        }
+
         const riskScore = analysisResult.risk_score || 0;
 
         // Update extension state based on risk score
         if (riskScore > 70) {
           await setHighRiskState();
+          await showHighRiskPopup();
           console.log('[Auto-Scan] High risk detected! Score:', riskScore);
         } else if (riskScore > 40) {
           await setWarningState();
@@ -522,7 +449,11 @@ chrome.action.onClicked.addListener(async (tab) => {
       // Example: Randomly determine result for demonstration
       const randomScore = Math.random() * 100;
 
-      if (randomScore > 40) {
+      if (randomScore > 70) {
+        await setHighRiskState();
+        await showHighRiskPopup();
+        console.log('[State Manager] Analysis complete - High Risk');
+      } else if (randomScore > 40) {
         await setWarningState();
         console.log('[State Manager] Analysis complete - Risk detected');
       } else {

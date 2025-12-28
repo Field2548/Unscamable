@@ -32,12 +32,12 @@ const ANIMATION_FRAMES = [
 // Icon paths configuration
 const ICON_CONFIG = {
   IDLE: {
-    16: 'icons/new.png',
-    32: 'icons/new.png',
+    16: 'icons/logo-ext16.png',
+    32: 'icons/logo-ext32.png',
   },
   SAFE: {
-    16: 'icons/icon16.png',
-    32: 'icons/icon32.png',
+    16: 'icons/logo-ext16.png',
+    32: 'icons/logo-ext32.png',
   },
   RISK: {
     16: 'icons/logo-ext16.png',

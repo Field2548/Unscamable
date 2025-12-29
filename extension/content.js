@@ -47,7 +47,14 @@ function scrapeChatText() {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'analyze_text') {
-    sendResponse({ text: scrapeChatText() });
+    chrome.storage.local.get({ extensionEnabled: true }, (res) => {
+      if (!res.extensionEnabled) {
+        sendResponse({ text: '', paused: true });
+        return;
+      }
+      sendResponse({ text: scrapeChatText() });
+    });
+    return true; // keep the message channel open for async sendResponse
   }
   return true;
 });

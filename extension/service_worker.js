@@ -29,16 +29,16 @@ const DEFAULT_ANALYZE_URL = 'http://localhost:5000/analyze';
 // Icon paths configuration
 const ICON_CONFIG = {
   IDLE: {
-    16: 'icons/logo-ext16.png',
-    32: 'icons/logo-ext32.png',
+    16: 'icons/logo-final16.png',
+    32: 'icons/logo-final32.png',
   },
   SAFE: {
-    16: 'icons/logo-ext16.png',
-    32: 'icons/logo-ext32.png',
+    16: 'icons/logo-final16.png',
+    32: 'icons/logo-final32.png',
   },
   RISK: {
-    16: 'icons/logo-ext16.png',
-    32: 'icons/logo-ext32.png',
+    16: 'icons/logo-final16.png',
+    32: 'icons/logo-final32.png',
   },
 };
 

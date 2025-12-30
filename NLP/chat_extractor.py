@@ -1,5 +1,5 @@
 import re
-from _regex import TIMESTAMP_REGEX, DATE_REGEX
+from NLP._regex import TIMESTAMP_REGEX, DATE_REGEX
 
 SENDER_NOISE = {
     "you", "me", "ฉัน", "ผม", "เรา", "คุณ", "คุณลุกค้า", "customer", "agent",

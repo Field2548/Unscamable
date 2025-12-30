@@ -1,5 +1,9 @@
 from typing import List
-from risk_score_message import calculate_message_risk_score
+
+try:
+    from .risk_score_message import calculate_message_risk_score
+except ImportError:  # fallback when executed as a loose script
+    from risk_score_message import calculate_message_risk_score
 
 CONTINUATION_KEYWORDS = {
     "กรุณา", "โปรด", "ภายใน", "วันนี้", "ด่วน", "ทันที",

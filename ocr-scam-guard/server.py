@@ -2,6 +2,7 @@ import base64
 import cv2
 import numpy as np
 import traceback
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from ocr_engine import run_ocr_scan
@@ -21,6 +22,11 @@ def base64_to_image(base64_string):
     nparr = np.frombuffer(img_data, np.uint8)
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     return image
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint for the extension to verify service is running."""
+    return jsonify({"status": "running", "service": "ocr-scam-guard"}), 200
 
 @app.route('/scan', methods=['POST'])
 def scan_image():
@@ -51,5 +57,6 @@ def scan_image():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
-    print("🚀 OCR Server running on http://localhost:5000")
-    app.run(port=5000, debug=True)
+    port = int(os.environ.get('OCR_PORT', 5001))
+    print(f"🚀 OCR Server running on http://localhost:{port}")
+    app.run(port=port, debug=False)

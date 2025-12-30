@@ -7,8 +7,13 @@ import requests
 import json
 
 # Add parent directory to path to import from NLP module
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from NLP.scam_keywords import CATEGORIES
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'NLP'))
+from risk_score_message import calculate_message_risk_score
+from risk_score_chat import analyze_chat
+from chat_extractor import extract_chat_messages
+from chat_normalizer import normalize_chat_messages
+from chat_grouper import group_chat_messages
+from classify_scam_message import classify_risk
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Chrome extension
@@ -16,58 +21,25 @@ CORS(app)  # Enable CORS for Chrome extension
 # OCR-Scam-Guard service URL (configurable via environment variable)
 OCR_SERVICE_URL = os.environ.get('OCR_SERVICE_URL', 'http://localhost:5001')
 
-# Convert CATEGORIES from scam_keywords to PATTERNS format
-PATTERNS = [
-    {
-        "name": category_key.replace('_', ' ').title(),
-        "terms": category_data["keywords"],
-        "artifacts": [],
-        "weight": category_data["weight"]
-    }
-    for category_key, category_data in CATEGORIES.items()
-]
-
-OTP_REGEX = re.compile(r"\b\d{6}\b")
 BANK_REGEX = re.compile(r"\d{3}-\d{1}-\d{5}-\d{1}")
 
-
-def normalize(text: str) -> str:
-    return text.lower()
-
-
-def detect_patterns(text: str):
-    text_norm = normalize(text)
-    matched = []
-    score = 0
-
-    for pattern in PATTERNS:
-        has_term = any(term.lower() in text_norm for term in pattern["terms"])
-        has_artifact = any(artifact in text_norm for artifact in pattern["artifacts"])
-        if has_term or has_artifact:
-            matched.append(pattern["name"])
-            score += pattern["weight"]
-
-    otp_found = bool(OTP_REGEX.search(text))
-    if otp_found:
-        matched.append("พบรหัส OTP 6 หลัก")
-        score += 8
-
-    return matched, score
+CATEGORY_LABELS = {
+    "urgency": "Urgency",
+    "identity_threat": "Identity Threat",
+    "financial_pressure": "Financial Pressure",
+    "authority": "Authority",
+    "delivery": "Delivery Scams",
+    "promotion": "Promotional Bait",
+    "link": "Link Requests",
+    "url": "Suspicious URL",
+    "money": "Money Mentions",
+    "time_pressure": "Time Pressure",
+    "otp": "OTP Request",
+}
 
 
-def calculate_risk(text, entities):
-    matched_patterns, pattern_score = detect_patterns(text)
-
-    score = pattern_score
-
-    if entities:
-        score += 15
-        matched_patterns.append("พบบัญชีต้องสงสัย")
-
-    if score > 100:
-        score = 100
-
-    return score, matched_patterns
+def format_category_label(category: str) -> str:
+    return CATEGORY_LABELS.get(category, category.replace("_", " ").title())
 
 
 def get_status(score):
@@ -117,10 +89,26 @@ def analyze():
     data = request.json
     raw_text = data.get('text', '')
     image_data = data.get('image', '')
+    is_chat = data.get('is_chat', False)  # flag to determine if analyzing chat or single message
     
     bank_accounts = BANK_REGEX.findall(raw_text)
-
-    risk_score, flags = calculate_risk(raw_text, bank_accounts)
+    
+    if is_chat:
+        # Full chat analysis pipeline
+        extracted_messages = extract_chat_messages(raw_text)
+        normalized_messages = normalize_chat_messages(extracted_messages)
+        grouped_messages = group_chat_messages(normalized_messages)
+        chat_result = analyze_chat(grouped_messages)
+        
+        risk_score = chat_result["chat_risk_score"]
+        flags = list(chat_result["detected_categories"].keys())
+        reason = chat_result["reason"]
+    else:
+        # Single message analysis
+        risk_score, categories = calculate_message_risk_score(raw_text)
+        flags = [format_category_label(cat) for cat in categories]
+        reason = "Single message analysis"
+    
     status_info = get_status(risk_score)
     
     # If image is provided, send to OCR service for analysis
@@ -141,6 +129,7 @@ def analyze():
         "color": status_info["color"],
         "flags": flags,
         "entities_found": bank_accounts,
+        "reason": reason if is_chat else None,
         "ocr_results": ocr_results
     })
 

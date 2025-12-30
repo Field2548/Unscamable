@@ -30,97 +30,20 @@ function showLoading() {
   riskScore.textContent = '...';
   factorsList.innerHTML = '<li>Analyzing text for scam patterns...</li>';
   
-  // Set animated loading icon
+  // Notify service worker to set scanning state (service worker manages icons)
   loadingActive = true;
-  chrome.action.setIcon({
-    path: {
-      "16": "icons/loading-animated-16.gif",
-      "32": "icons/loading-animated-32.gif",
-      "128": "icons/loading-animated-128.gif"
-    }
-  });
+  chrome.runtime.sendMessage({ action: 'setState', state: 'scanning' });
 }
 
 // Hide loading animation and restore default icon
 function hideLoading() {
   if (!loadingActive) return;
   loadingActive = false;
-  
-  // Restore default icon to mlogo
-  chrome.action.setIcon({
-    path: {
-      "16": "icons/mlogo.png",
-      "32": "icons/mlogo.png",
-      "48": "icons/mlogo.png",
-      "128": "icons/mlogo.png"
-    }
-  });
+  // Icon will be managed by service worker based on analysis results
 }
 
-// Update action icon based on status and risk score
-function updateActionIcon(status) {
-  const iconPath = getIconPath(status);
-  
-  if (iconPath) {
-    chrome.action.setIcon({
-      path: iconPath
-    });
-  }
-}
-
-// Get icon path based on status
-function getIconPath(status) {
-  // Status: 'processing' - AI is scanning text (animated GIF)
-  if (status === 'processing') {
-    return {
-      "16": "icons/loading-animated-16.gif",
-      "32": "icons/loading-animated-32.gif",
-      "128": "icons/loading-animated-128.gif"
-    };
-  }
-  
-  // Status: 'cautious' - Risk score = Be cautious (use new.png temporarily)
-  if (status === 'cautious') {
-    return {
-      "16": "icons/new.png",
-      "32": "icons/new.png"
-    };
-  }
-  
-  // Status: 'highrisk' - High Risk (use new.png temporarily)
-  if (status === 'highrisk') {
-    return {
-      "16": "icons/new.png",
-      "32": "icons/new.png"
-    };
-  }
-  
-  // Status: 'warning' - Warning (use new.png temporarily)
-  if (status === 'warning') {
-    return {
-      "16": "icons/new.png",
-      "32": "icons/new.png"
-    };
-  }
-  
-  // Status: 'safe' - Safe (default mlogo)
-  if (status === 'safe') {
-    return {
-      "16": "icons/mlogo.png",
-      "32": "icons/mlogo.png",
-      "48": "icons/mlogo.png",
-      "128": "icons/mlogo.png"
-    };
-  }
-  
-  // Default fallback
-  return {
-    "16": "icons/mlogo.png",
-    "32": "icons/mlogo.png",
-    "48": "icons/mlogo.png",
-    "128": "icons/mlogo.png"
-  };
-}
+// Icon management is handled entirely by service_worker.js
+// This ensures consistent icon state across all tabs and contexts
 
 // Helper function to determine status based on risk score
 function getStatusFromRiskScore(riskScore) {
@@ -147,11 +70,11 @@ function displayResult(result) {
   document.getElementById('riskScore').textContent = riskScore;
   document.querySelector('.risk-number').style.color = riskColor;
 
-  // Update action icon based on risk score
+  // Update extension state based on risk score via service worker
   // Safe (score = 0): Default icon, no badge
-  // Be cautious (0 < score <= 40): Yellow warning icon with "!" (yellow badge)
-  // Warning (40 < score <= 70): Orange warning icon with "!" (orange badge)
-  // High Risk (score > 70): Red warning icon with "!" (red badge)
+  // Be cautious (0 < score <= 40): Yellow "!" badge
+  // Warning (40 < score <= 70): Orange "!" badge
+  // High Risk (score > 70): Red "!" badge
   if (riskScore > 70) {
     chrome.runtime.sendMessage({ action: 'setState', state: 'highrisk' });
     autoOpenPopupIfHighRisk(riskScore);
@@ -160,20 +83,11 @@ function displayResult(result) {
   } else if (riskScore > 0) {
     chrome.runtime.sendMessage({ action: 'setState', state: 'cautious' });
   } else {
-    // Safe - show default icon
+    // Safe - show safe state
     chrome.runtime.sendMessage({ action: 'setState', state: 'safe' });
   }
 
-  // Clear any existing timeout and set new one to return to default idle state after 10 seconds
-  if (resetIconTimeout) {
-    clearTimeout(resetIconTimeout);
-  }
-  resetIconTimeout = setTimeout(() => {
-    chrome.runtime.sendMessage({ action: 'setState', state: 'idle' }, () => {
-      console.log('Icon reset to idle state');
-    });
-    resetIconTimeout = null;
-  }, 10000);
+  // Service worker will automatically reset to idle state after analysis
 
   const factorsList = document.getElementById('factorsList');
   factorsList.innerHTML = '';
@@ -306,10 +220,9 @@ async function runAnalysisIfEnabled() {
   });
 }
 
-// Tab change listener - reset icon to default when switching tabs
+// Tab change listener - cleanup on tab switch
 chrome.tabs.onActivated.addListener(() => {
-  hideLoading(); // Stop any running loading animation
-  updateActionIcon('safe');
+  hideLoading(); // Stop loading UI state
 });
 
 // Init handlers
@@ -327,9 +240,7 @@ document.getElementById('toggleSwitch').addEventListener('change', (e) => {
   });
 });
 
-// On load
-// Set default icon when popup opens
-updateActionIcon('safe');
+// On load - run analysis
 runAnalysisIfEnabled();
 
 // Listen for auto-analysis updates from content script

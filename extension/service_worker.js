@@ -17,10 +17,10 @@ let currentState = 'idle';
 let lastHighRiskPopupTs = 0;
 const HIGH_RISK_POPUP_COOLDOWN_MS = 30000; // throttle repeated popups
 
-// Scanning icon (static PNG to satisfy Chrome icon requirements)
+// Scanning icon (animated GIF for visual feedback)
 const SCANNING_ICON = {
-  16: 'icons/logo-ext16.png',
-  32: 'icons/logo-ext32.png',
+  16: 'icons/loading-animated-16.gif',
+  32: 'icons/loading-animated-32.gif',
 };
 
 // Backend endpoint for analysis (override via storage if needed)
@@ -280,11 +280,18 @@ async function analyzeNewMessages(text, tabId) {
       // Resolve backend URL
       const { analyzeUrl = DEFAULT_ANALYZE_URL } = await chrome.storage.local.get({ analyzeUrl: DEFAULT_ANALYZE_URL });
 
-      const serverResponse = await fetch(analyzeUrl, {
+      // Create a timeout promise (10 second max wait)
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Analysis timeout')), 10000)
+      );
+
+      const fetchPromise = fetch(analyzeUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: text, image: '' }),
       });
+
+      const serverResponse = await Promise.race([fetchPromise, timeoutPromise]);
 
       if (!serverResponse.ok) {
         throw new Error(`HTTP ${serverResponse.status}`);
@@ -311,13 +318,11 @@ async function analyzeNewMessages(text, tabId) {
         console.log('[Auto-Scan] ✓ Page is safe. Score:', riskScore);
       }
 
-      // Reset to idle after 4 seconds
-      setTimeout(async () => {
-        await setIdleState();
-      }, 4000);
+      // Keep the risk state persistent - it will update when new messages arrive
+      // Content script monitors for new messages and triggers auto-analysis automatically
 
     } catch (fetchError) {
-      console.warn('[Auto-Scan] Backend unreachable:', fetchError);
+      console.warn('[Auto-Scan] Backend unreachable or timeout:', fetchError.message);
       await setIdleState();
     }
   } catch (error) {

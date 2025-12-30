@@ -204,45 +204,89 @@ function observeNewMessages() {
 
 let analysisTimeout;
 let lastAnalyzedText = '';
+let lastAnalysisTime = 0;
+const MIN_ANALYSIS_INTERVAL = 2000; // Minimum 2 seconds between analyses
+let periodicScanInterval = null;
 
 function scheduleAnalysis() {
   // Debounce: wait 500ms after the last DOM change before analyzing
   clearTimeout(analysisTimeout);
   analysisTimeout = setTimeout(() => {
-    const text = scrapeChatText();
-    if (text && text !== 'No chat content detected.' && text !== lastAnalyzedText) {
-      lastAnalyzedText = text;
-      
-      // Store chat history in storage for persistent analysis
-      chrome.storage.local.get({ chatHistory: [] }, (res) => {
-        const history = res.chatHistory || [];
-        
-        // Add new message with timestamp
-        history.push({
-          text: text,
-          timestamp: Date.now(),
-          url: window.location.href
-        });
-        
-        // Keep last 50 messages to avoid storage bloat
-        if (history.length > 50) {
-          history.shift();
-        }
-        
-        chrome.storage.local.set({ chatHistory: history });
-        
-        // Trigger service worker to auto-analyze
-        chrome.runtime.sendMessage(
-          { action: 'auto_analyze', text: text },
-          (response) => {
-            if (chrome.runtime.lastError) {
-              // Service worker not ready yet, that's okay
-            }
-          }
-        );
-      });
-    }
+    performAnalysis();
   }, 500);
+}
+
+function performAnalysis() {
+  const text = scrapeChatText();
+  const now = Date.now();
+  
+  // Check if enough time has passed since last analysis
+  if (now - lastAnalysisTime < MIN_ANALYSIS_INTERVAL) {
+    console.log('[Unscamable] Skipping analysis (too frequent)');
+    return;
+  }
+  
+  if (text && text !== 'No content detected.') {
+    // Always analyze even if text is the same (in case backend logic changed or for periodic updates)
+    lastAnalyzedText = text;
+    lastAnalysisTime = now;
+    
+    // Store chat history in storage for persistent analysis
+    chrome.storage.local.get({ chatHistory: [] }, (res) => {
+      const history = res.chatHistory || [];
+      
+      // Add new message with timestamp
+      history.push({
+        text: text,
+        timestamp: Date.now(),
+        url: window.location.href
+      });
+      
+      // Keep last 50 messages to avoid storage bloat
+      if (history.length > 50) {
+        history.shift();
+      }
+      
+      chrome.storage.local.set({ chatHistory: history });
+      
+      // Trigger service worker to auto-analyze
+      chrome.runtime.sendMessage(
+        { action: 'auto_analyze', text: text },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            console.log('[Unscamable] Service worker not ready');
+          } else {
+            console.log('[Unscamable] Auto-analysis triggered successfully');
+          }
+        }
+      );
+    });
+  }
+}
+
+// Start periodic scanning every 10 seconds
+function startPeriodicScanning() {
+  // Clear any existing interval
+  if (periodicScanInterval) {
+    clearInterval(periodicScanInterval);
+  }
+  
+  // Perform initial scan after 2 seconds
+  setTimeout(() => {
+    performAnalysis();
+  }, 2000);
+  
+  // Then scan every 10 seconds
+  periodicScanInterval = setInterval(() => {
+    chrome.storage.local.get({ extensionEnabled: true }, (res) => {
+      if (res.extensionEnabled) {
+        console.log('[Unscamable] Periodic scan triggered');
+        performAnalysis();
+      }
+    });
+  }, 10000); // Scan every 10 seconds
+  
+  console.log('[Unscamable] Periodic scanning enabled (every 10 seconds)');
 }
 
 // ============================================================================
@@ -269,7 +313,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // Start monitoring when the page loads
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', observeNewMessages);
+  document.addEventListener('DOMContentLoaded', () => {
+    observeNewMessages();
+    startPeriodicScanning();
+  });
 } else {
   observeNewMessages();
+  startPeriodicScanning();
 }

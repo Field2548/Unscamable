@@ -152,7 +152,7 @@ function displayResult(result) {
   // Be cautious (0 < score <= 40): Yellow warning icon with "!" (yellow badge)
   // Warning (40 < score <= 70): Orange warning icon with "!" (orange badge)
   // High Risk (score > 70): Red warning icon with "!" (red badge)
-  if (riskScore > 60) {
+  if (riskScore > 70) {
     chrome.runtime.sendMessage({ action: 'setState', state: 'highrisk' });
     autoOpenPopupIfHighRisk(riskScore);
   } else if (riskScore > 40) {
@@ -200,7 +200,7 @@ function displayResult(result) {
 // Auto-open popup for high risk
 function autoOpenPopupIfHighRisk(riskScore) {
   // Only auto-open if risk score is high risk (> 70) and popup is not already open
-  if (riskScore > 60) {
+  if (riskScore > 70) {
     // Send message to service worker to confirm high risk detected
     chrome.runtime.sendMessage({ action: 'openPopup' }, (response) => {
       if (response && response.success) {
@@ -260,35 +260,47 @@ async function runAnalysisIfEnabled() {
         return;
       }
 
-      chrome.tabs.sendMessage(tab.id, { action: 'analyze_text' }, async (response) => {
-        if (chrome.runtime.lastError || !response) {
+      showLoading(); // Show loading before sending message
+
+      chrome.tabs.sendMessage(tab.id, { action: 'analyze_text' }, (response) => {
+        // Check for lastError immediately with safe access
+        const lastError = chrome.runtime.lastError;
+        if (lastError) {
+          console.error('[Unscamable] Content script error:', lastError?.message || lastError?.toString() || 'Unknown error');
           hideLoading();
           document.getElementById('riskLevel').textContent = 'Error';
           document.getElementById('factorsList').innerHTML = '<li>Refresh the page and try again</li>';
-          console.error(chrome.runtime.lastError?.message || chrome.runtime.lastError);
           return;
         }
 
-        try {
-          // Show loading animation while analyzing
-          showLoading();
-          
-          const serverResponse = await fetch('http://localhost:5000/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: response.text, image: '' })
-          });
-
-          const result = await serverResponse.json();
-          
-          // Hide loading animation and display results
-          displayResult(result);
-        } catch (error) {
+        if (!response) {
+          console.error('[Unscamable] No response from content script');
           hideLoading();
           document.getElementById('riskLevel').textContent = 'Error';
-          document.getElementById('factorsList').innerHTML = '<li>Backend not running. Start Flask server on port 5000</li>';
-          console.error(error);
+          document.getElementById('factorsList').innerHTML = '<li>Refresh the page and try again</li>';
+          return;
         }
+
+        // Proceed with async analysis
+        (async () => {
+          try {
+            const serverResponse = await fetch('http://localhost:5000/analyze', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: response.text, image: '' })
+            });
+
+            const result = await serverResponse.json();
+            
+            // Hide loading animation and display results
+            displayResult(result);
+          } catch (error) {
+            hideLoading();
+            document.getElementById('riskLevel').textContent = 'Error';
+            document.getElementById('factorsList').innerHTML = '<li>Backend not running. Start Flask server on port 5000</li>';
+            console.error('[Unscamable] Fetch error:', error?.message || String(error));
+          }
+        })();
       });
     });
   });
@@ -319,3 +331,13 @@ document.getElementById('toggleSwitch').addEventListener('change', (e) => {
 // Set default icon when popup opens
 updateActionIcon('safe');
 runAnalysisIfEnabled();
+
+// Listen for auto-analysis updates from content script
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'auto_analyze_result') {
+    // Update popup display with new analysis results
+    displayResult(request.result);
+    sendResponse({ success: true });
+  }
+  return true;
+});

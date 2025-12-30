@@ -254,13 +254,98 @@ async function openPopup() {
 }
 
 /**
+ * Analyze new messages detected by content script (auto-analysis)
+ * @param {string} text - The message text to analyze
+ * @param {number} tabId - The tab ID where the message was detected
+ */
+async function analyzeNewMessages(text, tabId) {
+  try {
+    // Skip if no content detected
+    if (!text || text === 'No content detected.') {
+      console.log('[Auto-Scan] No content to analyze, skipping');
+      return;
+    }
+
+    // Check if extension is enabled
+    const result = await chrome.storage.local.get({ extensionEnabled: true });
+    if (!result.extensionEnabled) {
+      console.log('[Auto-Scan] Extension is disabled, skipping analysis');
+      return;
+    }
+
+    // Start scanning state
+    await startScanningState();
+
+    try {
+      // Resolve backend URL
+      const { analyzeUrl = DEFAULT_ANALYZE_URL } = await chrome.storage.local.get({ analyzeUrl: DEFAULT_ANALYZE_URL });
+
+      const serverResponse = await fetch(analyzeUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text, image: '' }),
+      });
+
+      if (!serverResponse.ok) {
+        throw new Error(`HTTP ${serverResponse.status}`);
+      }
+
+      const analysisResult = await serverResponse.json();
+      const riskScore = analysisResult.risk_score || 0;
+
+      console.log('[Auto-Scan] New message analyzed. Risk score:', riskScore);
+
+      // Update extension state based on risk score
+      if (riskScore > 70) {
+        await setHighRiskState();
+        await showHighRiskPopup();
+        console.log('[Auto-Scan] ⚠️ HIGH RISK DETECTED! Score:', riskScore);
+      } else if (riskScore > 40) {
+        await setWarningState();
+        console.log('[Auto-Scan] ⚠️ WARNING detected. Score:', riskScore);
+      } else if (riskScore > 0) {
+        await setCautiousState();
+        console.log('[Auto-Scan] ⚠️ CAUTION recommended. Score:', riskScore);
+      } else {
+        await setSafeState();
+        console.log('[Auto-Scan] ✓ Page is safe. Score:', riskScore);
+      }
+
+      // Reset to idle after 4 seconds
+      setTimeout(async () => {
+        await setIdleState();
+      }, 4000);
+
+    } catch (fetchError) {
+      console.warn('[Auto-Scan] Backend unreachable:', fetchError);
+      await setIdleState();
+    }
+  } catch (error) {
+    console.error('[Auto-Scan] Error analyzing messages:', error);
+    await setIdleState();
+  }
+}
+
+/**
  * Listen for messages from popup or content scripts
  * Supported messages:
  * - { action: 'setState', state: 'idle' | 'scanning' | 'safe' | 'cautious' | 'warning' | 'highRisk' }
  * - { action: 'getState' }
  * - { action: 'openPopup' }
+ * - { action: 'auto_analyze', text: '...' } (from content script)
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'auto_analyze') {
+    // Auto-analyze new messages detected by content script
+    analyzeNewMessages(request.text, sender.tab.id).then(() => {
+      sendResponse({ success: true });
+    }).catch((error) => {
+      console.error('[Auto-Scan] Error:', error);
+      sendResponse({ success: false, error: error.message });
+    });
+    return true; // Keep message channel open for async response
+  }
+
   if (request.action === 'setState') {
     const state = request.state?.toLowerCase();
 
@@ -325,6 +410,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  */
 async function analyzeTabContent(tabId) {
   try {
+    // Get the tab details
+    const tab = await chrome.tabs.get(tabId);
+    
+    // Skip analysis on non-web pages
+    if (!tab.url || tab.url.startsWith('chrome://')) {
+      console.log('[Auto-Scan] Skipped: Not a web page');
+      return;
+    }
+
     // Check if extension is enabled
     const result = await chrome.storage.local.get({ extensionEnabled: true });
     if (!result.extensionEnabled) {
@@ -345,6 +439,13 @@ async function analyzeTabContent(tabId) {
 
       if (!response || response.paused) {
         console.log('[Auto-Scan] Extension is paused or no response');
+        await setIdleState();
+        return;
+      }
+
+      // Skip if no chat content detected
+      if (response.text === 'No chat content detected.') {
+        console.log('[Auto-Scan] Not a supported chat platform, skipping analysis');
         await setIdleState();
         return;
       }

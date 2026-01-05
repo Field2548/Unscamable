@@ -203,10 +203,36 @@ async function showHighRiskPopup() {
   lastHighRiskPopupTs = now;
 
   try {
-    await chrome.action.openPopup();
-    console.log('[State Manager] High-risk popup opened');
+    // Try to open popup in the active tab
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs && tabs.length > 0) {
+      await chrome.action.openPopup();
+      console.log('[State Manager] High-risk popup opened');
+    } else {
+      console.warn('[State Manager] No active tab found for popup, using notification instead');
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon_48.png'),
+        title: '⚠️ High Risk Detected',
+        message: 'Potential scam detected! Click here to review.',
+        priority: 2,
+      });
+    }
   } catch (error) {
-    console.error('[State Manager] Error opening high-risk popup:', error);
+    console.warn('[State Manager] Error opening high-risk popup:', error.message);
+    // Fallback: use notification if popup fails
+    try {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon_48.png'),
+        title: '⚠️ High Risk Detected',
+        message: 'Potential scam detected! Click here to review.',
+        priority: 2,
+      });
+      console.log('[State Manager] Used notification as fallback');
+    } catch (notifError) {
+      console.error('[State Manager] Error creating notification:', notifError);
+    }
   }
 }
 
@@ -246,20 +272,45 @@ initializeExtension();
  */
 async function openPopup() {
   try {
-    await chrome.action.openPopup();
-    console.log('[State Manager] Popup opened');
+    // Try to open popup in the active tab
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs && tabs.length > 0) {
+      await chrome.action.openPopup();
+      console.log('[State Manager] Popup opened successfully');
+    } else {
+      console.warn('[State Manager] No active tab found, cannot open popup');
+      return { success: false, reason: 'No active tab' };
+    }
   } catch (error) {
-    console.error('[State Manager] Error opening popup:', error);
+    console.warn('[State Manager] Error opening popup:', error.message);
+    // Don't throw - this can happen if service worker is in background
+    return { success: false, reason: error.message };
   }
+  return { success: true };
 }
 
 /**
  * Analyze new messages detected by content script (auto-analysis)
- * @param {string} text - The message text to analyze
+ * Supports both new extraction contract format and legacy text format
+ * @param {string|Array} textOrMessages - The message text or array of message objects
  * @param {number} tabId - The tab ID where the message was detected
  */
-async function analyzeNewMessages(text, tabId) {
+async function analyzeNewMessages(textOrMessages, tabId) {
   try {
+    // Handle both formats
+    let text = '';
+    let messages = [];
+    
+    if (Array.isArray(textOrMessages)) {
+      // New format: array of message objects
+      messages = textOrMessages;
+      text = messages.map(msg => msg.text || msg).join('\n\n');
+      console.log(`[Auto-Scan] Received ${messages.length} message(s) from extraction contract`);
+    } else {
+      // Legacy format: raw text
+      text = textOrMessages;
+    }
+
     // Skip if no content detected
     if (!text || text === 'No content detected.') {
       console.log('[Auto-Scan] No content to analyze, skipping');
@@ -285,10 +336,15 @@ async function analyzeNewMessages(text, tabId) {
         setTimeout(() => reject(new Error('Analysis timeout')), 10000)
       );
 
+      // Build request payload supporting both formats
+      const payload = messages.length > 0 
+        ? { messages: messages }  // New format with metadata
+        : { text: text };         // Legacy format
+
       const fetchPromise = fetch(analyzeUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text, image: '' }),
+        body: JSON.stringify(payload),
       });
 
       const serverResponse = await Promise.race([fetchPromise, timeoutPromise]);
@@ -300,7 +356,7 @@ async function analyzeNewMessages(text, tabId) {
       const analysisResult = await serverResponse.json();
       const riskScore = analysisResult.risk_score || 0;
 
-      console.log('[Auto-Scan] New message analyzed. Risk score:', riskScore);
+      console.log('[Auto-Scan] Analysis complete. Risk score:', riskScore);
 
       // Update extension state based on risk score
       if (riskScore > 70) {
@@ -318,9 +374,6 @@ async function analyzeNewMessages(text, tabId) {
         console.log('[Auto-Scan] ✓ Page is safe. Score:', riskScore);
       }
 
-      // Keep the risk state persistent - it will update when new messages arrive
-      // Content script monitors for new messages and triggers auto-analysis automatically
-
     } catch (fetchError) {
       console.warn('[Auto-Scan] Backend unreachable or timeout:', fetchError.message);
       await setIdleState();
@@ -337,12 +390,16 @@ async function analyzeNewMessages(text, tabId) {
  * - { action: 'setState', state: 'idle' | 'scanning' | 'safe' | 'cautious' | 'warning' | 'highRisk' }
  * - { action: 'getState' }
  * - { action: 'openPopup' }
- * - { action: 'auto_analyze', text: '...' } (from content script)
+ * - { action: 'auto_analyze', text: '...' } (legacy format from content script)
+ * - { action: 'auto_analyze', messages: [...] } (new extraction contract format)
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'auto_analyze') {
     // Auto-analyze new messages detected by content script
-    analyzeNewMessages(request.text, sender.tab.id).then(() => {
+    // Supports both new message format and legacy text format
+    const input = request.messages || request.text;
+    
+    analyzeNewMessages(input, sender.tab?.id).then(() => {
       sendResponse({ success: true });
     }).catch((error) => {
       console.error('[Auto-Scan] Error:', error);
@@ -400,7 +457,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'openPopup') {
-    openPopup().then(() => sendResponse({ success: true }));
+    openPopup().then((result) => sendResponse(result)).catch(() => sendResponse({ success: false }));
     return true; // Keep message channel open for async response
   }
 });

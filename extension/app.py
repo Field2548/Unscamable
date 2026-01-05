@@ -4,6 +4,11 @@ import re
 import os
 import sys
 import requests
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Add parent directory to path to import from NLP module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -129,9 +134,45 @@ def analyze_image_with_ocr(base64_image):
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
+    """
+    Analyze messages for scam risk
+    
+    Supports two input formats:
+    
+    1. NEW FORMAT (Extraction Contract):
+       {
+         "messages": [
+           {
+             "text": "message content",
+             "timestamp": "2025-01-05T10:30:00Z",
+             "sender": "unknown",
+             "source": "messenger"
+           }
+         ],
+         "image": "base64_encoded_image_optional"
+       }
+    
+    2. LEGACY FORMAT (for backward compatibility):
+       {
+         "text": "raw text to analyze",
+         "image": "base64_encoded_image_optional"
+       }
+    """
     data = request.json
-    raw_text = data.get('text', '')
     image_data = data.get('image', '')
+    
+    # Support both new message format and legacy text format
+    messages = data.get('messages', [])
+    raw_text = data.get('text', '')
+    
+    # If messages are provided, convert to text for NLP pipeline
+    if messages and isinstance(messages, list):
+        # Extract text from message objects
+        raw_text = '\n\n'.join([
+            msg['text'] if isinstance(msg, dict) else msg
+            for msg in messages
+        ])
+        print(f"[Extraction Contract] Received {len(messages)} message(s) from {messages[0].get('source', 'unknown') if messages else 'unknown'}")
     
     bank_accounts = BANK_REGEX.findall(raw_text)
     nlp_results = run_nlp_pipeline(raw_text)
@@ -164,7 +205,8 @@ def analyze():
     analysis_detail = {
         **nlp_results,
         "text_risk_score": chat_report["chat_risk_score"],
-        "bank_bonus": bank_bonus
+        "bank_bonus": bank_bonus,
+        "message_count": len(messages) if messages else 1
     }
 
     return jsonify({
@@ -176,6 +218,16 @@ def analyze():
         "ocr_results": ocr_results,
         "analysis": analysis_detail
     })
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint - returns service status"""
+    return jsonify({
+        "status": "ok",
+        "service": "Extension Backend",
+        "version": "1.0"
+    }), 200
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

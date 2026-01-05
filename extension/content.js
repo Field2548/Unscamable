@@ -2,11 +2,31 @@
 // CHAT SELECTORS FOR DIFFERENT PLATFORMS
 // ============================================================================
 
+// Define main message container selectors for each platform
+const MESSAGE_CONTAINER_SELECTORS = {
+  messenger: [
+    '[role="main"]', // Main conversation area in Messenger
+    '[data-qa="conversation"]', // Conversation container
+    '[class*="conversation"]', // Fallback
+  ],
+  whatsapp: [
+    '[data-testid="conversation-panel-messages"]',
+    '[class*="message"]',
+  ],
+  gmail: [
+    '[role="main"]',
+  ],
+  telegram: [
+    '[class*="messages-container"]',
+  ],
+};
+
 const PLATFORM_SELECTORS = {
   // Facebook Messenger / Messenger.com
   messenger: [
     '[data-testid="messageContent"]',
-    '[role="article"] span',
+    '[role="article"]', // Message bubbles
+    'span[dir="auto"]', // Text content in messages
     '.msg',
     '[data-qa="message_body"]',
   ],
@@ -47,8 +67,35 @@ const PLATFORM_SELECTORS = {
   ]
 };
 
+// Selectors to identify user's own messages (to be excluded)
+const USER_MESSAGE_SELECTORS = {
+  messenger: [
+    // Facebook Messenger specific selectors
+    '[data-testid="outgoing_message"]',
+    '[data-testid="incoming_message"]', // Will be inverted - we want to exclude outgoing
+    '[class*="x1n2onr6"]', // Blue bubble styling (user messages on right)
+  ],
+  whatsapp: [
+    '.message-out',
+    '[class*="message-out"]',
+  ],
+  telegram: [
+    '.message.is-out',
+    '[class*="is-out"]',
+  ],
+  gmail: [
+    '[role="listitem"][class*="bkL"]',
+  ],
+  generic: [
+    '[class*="outgoing"]',
+    '[class*="sent"]',
+  ]
+};
+
 const MESSAGE_OBSERVERS = new Map();
 let seenMessages = new Set();
+let seenMessageHashes = new Set(); // Track analyzed message hashes
+let newMessagesToAnalyze = []; // Queue of new messages waiting to be analyzed
 
 // ============================================================================
 // DETECT CURRENT PLATFORM
@@ -78,6 +125,76 @@ function isSupportedChatPlatform() {
 // MESSAGE EXTRACTION & DEDUPLICATION
 // ============================================================================
 
+function isUserMessage(element, platform) {
+  if (!element) return false;
+  
+  // Platform-specific detection for Facebook Messenger
+  if (platform === 'messenger') {
+    // Get the message container/bubble
+    const bubble = element.closest('[role="article"]') || element;
+    
+    // Check the computed width and position to determine if it's on the RIGHT (user) or LEFT (other)
+    const styles = window.getComputedStyle(bubble);
+    
+    // Method 1: Check if element is near the RIGHT edge
+    // Get the bounding rectangle to check actual position
+    const rect = bubble.getBoundingClientRect();
+    const mainContainer = document.querySelector('[role="main"]') || document.body;
+    const containerRect = mainContainer.getBoundingClientRect();
+    
+    // Calculate position from right edge
+    const distanceFromRight = containerRect.right - rect.right;
+    const distanceFromLeft = rect.left - containerRect.left;
+    
+    // Debug info
+    // console.log('[DEBUG] Distance - Left:', distanceFromLeft, 'Right:', distanceFromRight);
+    
+    // If closer to RIGHT edge (smaller distance from right), it's user's message
+    // Allow some threshold for rounding
+    if (distanceFromRight < 100 && distanceFromLeft > 100) {
+      return true; // This is user's message (right side)
+    }
+    
+    // Method 2: Check for large left margin (user messages pushed to right)
+    const marginLeft = styles.marginLeft;
+    try {
+      const leftMargin = parseFloat(marginLeft || '0');
+      if (leftMargin > 50) {
+        return true; // User's message (right side, large left margin)
+      }
+    } catch (e) {
+      // Continue
+    }
+    
+    // If we get here, it's likely a message from someone else (left side)
+    return false;
+  }
+  
+  // For other platforms, try generic selectors
+  const selectors = USER_MESSAGE_SELECTORS[platform] || USER_MESSAGE_SELECTORS.generic;
+  
+  for (const selector of selectors) {
+    try {
+      if (element.matches?.(selector)) {
+        return true;
+      }
+      let parent = element.parentElement;
+      let depth = 0;
+      while (parent && depth < 5) {
+        if (parent.matches?.(selector)) {
+          return true;
+        }
+        parent = parent.parentElement;
+        depth++;
+      }
+    } catch (e) {
+      // Selector error, skip
+    }
+  }
+  
+  return false;
+}
+
 function extractMessageText(element) {
   if (!element) return '';
   
@@ -100,29 +217,57 @@ function getMessageHash(text) {
   return trimmed;
 }
 
+/**
+ * CORE FUNCTION: Scrape all chat text from the page
+ * Returns combined text of all visible messages from the main message box only
+ */
 function scrapeChatText(platform = null) {
   if (!platform) {
     platform = detectPlatform();
   }
 
-  const selectors = PLATFORM_SELECTORS[platform] || PLATFORM_SELECTORS.generic;
   const messages = [];
+  
+  // First, find the main message container (not the sidebar)
+  let mainContainer = null;
+  const containerSelectors = MESSAGE_CONTAINER_SELECTORS[platform] || MESSAGE_CONTAINER_SELECTORS.generic || [];
+  
+  for (const containerSelector of containerSelectors) {
+    try {
+      mainContainer = document.querySelector(containerSelector);
+      if (mainContainer) {
+        console.log('[Unscamable] Found main message container');
+        break;
+      }
+    } catch (e) {
+      // Continue
+    }
+  }
+  
+  // If no container found, use the whole document but be more restrictive
+  if (!mainContainer) {
+    console.log('[Unscamable] Main container not found, using document.body');
+    mainContainer = document.body;
+  }
+
+  const selectors = PLATFORM_SELECTORS[platform] || PLATFORM_SELECTORS.generic;
 
   for (const selector of selectors) {
     try {
-      const elements = document.querySelectorAll(selector);
+      // Query only within the main container
+      const elements = mainContainer.querySelectorAll(selector);
       
       for (const el of elements) {
         if (el && el.offsetHeight > 0) { // only visible elements
+          // Skip user's own messages (right side)
+          if (isUserMessage(el, platform)) {
+            continue;
+          }
+          
           const text = extractMessageText(el);
           
           if (text.length > 3) { // filter out tiny fragments
-            const hash = getMessageHash(text);
-            
-            if (!seenMessages.has(hash)) {
-              messages.push(text);
-              seenMessages.add(hash);
-            }
+            messages.push(text);
           }
         }
       }
@@ -133,62 +278,134 @@ function scrapeChatText(platform = null) {
     }
   }
 
-  // If no messages found, return all visible text from the page
-  if (messages.length === 0 && document.body) {
-    const bodyText = document.body.innerText?.trim() || '';
-    if (bodyText) {
-      messages.push(bodyText);
-    }
-  }
-
   const combinedText = messages.join('\n\n').trim();
+
   return combinedText || 'No content detected.';
 }
+
+// ============================================================================
+// MESSAGE COLLECTION (NEW & UNSEEN ONLY)
+// ============================================================================
 
 // ============================================================================
 // CONTINUOUS MONITORING WITH MUTATIONOBSERVER
 // ============================================================================
 
+function extractNewMessages(nodes, platform) {
+  const selectors = PLATFORM_SELECTORS[platform] || PLATFORM_SELECTORS.generic;
+  const newMessages = [];
+  
+  nodes.forEach((node) => {
+    // Only process element nodes
+    if (node.nodeType !== 1) return;
+    
+    // Check if the node itself is a message
+    for (const selector of selectors) {
+      try {
+        if (node.matches?.(selector)) {
+          // Skip if this is the user's own message
+          if (isUserMessage(node, platform)) {
+            console.log('[Unscamable] Skipping user\'s own message');
+            return;
+          }
+          
+          const text = extractMessageText(node);
+          if (text.length > 3) {
+            const hash = getMessageHash(text);
+            if (!seenMessageHashes.has(hash)) {
+              newMessages.push({ text, hash });
+              seenMessageHashes.add(hash);
+            }
+          }
+          return; // Found message in this node
+        }
+      } catch (e) {
+        // Selector error, skip
+      }
+    }
+    
+    // Check if the node's children contain messages
+    try {
+      const selectorString = selectors.join(',');
+      const messageElements = node.querySelectorAll(selectorString) || [];
+      
+      messageElements.forEach((el) => {
+        // Skip if this is the user's own message
+        if (isUserMessage(el, platform)) {
+          return;
+        }
+        
+        const text = extractMessageText(el);
+        if (text.length > 3) {
+          const hash = getMessageHash(text);
+          if (!seenMessageHashes.has(hash)) {
+            newMessages.push({ text, hash });
+            seenMessageHashes.add(hash);
+          }
+        }
+      });
+    } catch (e) {
+      // Selector error, ignore
+    }
+  });
+  
+  return newMessages;
+}
+
 function observeNewMessages() {
   const platform = detectPlatform();
-  const selectors = PLATFORM_SELECTORS[platform] || PLATFORM_SELECTORS.generic;
   
-  const containerSelectors = [
-    '[data-testid="messageContent"]',
-    '[class*="chat"]',
-    '[role="main"]',
-    '.messages',
-    '.conversation',
-    'main',
-    '[data-qa="conversation"]',
-  ];
-
+  // More specific selectors for the main message container
+  const containerSelectors = {
+    messenger: [
+      '[role="main"]', // Main conversation area
+      '[data-qa="conversation"]',
+      'main',
+    ],
+    whatsapp: [
+      '[data-testid="conversation-panel-messages"]',
+    ],
+    generic: [
+      '[role="main"]',
+      '.messages',
+      '.conversation',
+      '[class*="chat"]',
+    ]
+  };
+  
   let container = null;
-  for (const sel of containerSelectors) {
-    container = document.querySelector(sel);
-    if (container) break;
+  const selectors = containerSelectors[platform] || containerSelectors.generic;
+  
+  for (const sel of selectors) {
+    try {
+      container = document.querySelector(sel);
+      if (container) {
+        console.log('[Unscamable] Found container:', sel);
+        break;
+      }
+    } catch (e) {
+      // Continue
+    }
   }
 
   if (!container) {
+    console.log('[Unscamable] No container found, using document.body');
     container = document.body;
   }
 
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       // Check if new nodes were added
-      if (mutation.type === 'childList') {
-        mutation.addedNodes.forEach((node) => {
-          // Only process element nodes
-          if (node.nodeType !== 1) return;
-
-          // Check if the new node or its children contain messages
-          const messageElements = node.querySelectorAll?.(...selectors) || [];
-          
-          if (messageElements.length > 0) {
-            // New messages detected, trigger analysis
-            scheduleAnalysis();
-          }
-        });
+      if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+        // Extract messages from newly added nodes
+        const newMessages = extractNewMessages(Array.from(mutation.addedNodes), platform);
+        
+        if (newMessages.length > 0) {
+          // Add to queue and schedule analysis
+          newMessagesToAnalyze.push(...newMessages);
+          scheduleAnalysis();
+          console.log(`[Unscamable] Detected ${newMessages.length} new message(s)`, newMessages);
+        }
       }
     });
   });
@@ -217,7 +434,11 @@ function scheduleAnalysis() {
 }
 
 function performAnalysis() {
-  const text = scrapeChatText();
+  // Only analyze if there are new messages
+  if (newMessagesToAnalyze.length === 0) {
+    return;
+  }
+  
   const now = Date.now();
   
   // Check if enough time has passed since last analysis
@@ -226,8 +447,11 @@ function performAnalysis() {
     return;
   }
   
-  if (text && text !== 'No content detected.') {
-    // Always analyze even if text is the same (in case backend logic changed or for periodic updates)
+  // Combine all new messages into one text
+  const text = newMessagesToAnalyze.map(m => m.text).join('\n\n');
+  newMessagesToAnalyze = []; // Clear the queue
+  
+  if (text) {
     lastAnalyzedText = text;
     lastAnalysisTime = now;
     
@@ -290,22 +514,72 @@ function startPeriodicScanning() {
 }
 
 // ============================================================================
-// MESSAGE LISTENER
+// DEBUG FUNCTION - Check what messages are detected
+// ============================================================================
+
+function debugMessages() {
+  const platform = detectPlatform();
+  console.log('[Unscamable DEBUG] Platform:', platform);
+  
+  // Find main container
+  let mainContainer = document.querySelector('[role="main"]');
+  if (!mainContainer) {
+    mainContainer = document.querySelector('[data-qa="conversation"]');
+  }
+  if (!mainContainer) {
+    mainContainer = document.body;
+  }
+  
+  console.log('[Unscamable DEBUG] Main container:', mainContainer);
+  
+  // Try to find messages
+  const articles = mainContainer.querySelectorAll('[role="article"]');
+  console.log('[Unscamable DEBUG] Found', articles.length, 'articles');
+  
+  articles.forEach((article, index) => {
+    const text = extractMessageText(article);
+    const isUser = isUserMessage(article, platform);
+    const rect = article.getBoundingClientRect();
+    
+    console.log(`[Unscamable DEBUG] Message ${index}:`, {
+      text: text.substring(0, 50),
+      isUserMessage: isUser,
+      position: { left: rect.left, right: rect.right },
+      offsetHeight: article.offsetHeight
+    });
+  });
+}
+
+// ============================================================================
+// MESSAGE LISTENER - BACKWARDS COMPATIBLE
 // ============================================================================
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'analyze_text') {
     chrome.storage.local.get({ extensionEnabled: true }, (res) => {
       if (!res.extensionEnabled) {
-        sendResponse({ text: '', paused: true });
+        sendResponse({ text: '', messages: [], paused: true });
         return;
       }
-      sendResponse({ text: scrapeChatText() });
+      
+      // Extract text and send for analysis
+      const platform = detectPlatform();
+      const text = scrapeChatText(platform);
+      
+      sendResponse({ 
+        text: text,
+        success: true
+      });
     });
     return true;
   }
   return true;
 });
+
+// Expose debug function globally
+window.unscamableDebug = debugMessages;
+window.unscamableForceAnalysis = performAnalysis;
+
 
 // ============================================================================
 // INITIALIZATION
@@ -315,9 +589,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     observeNewMessages();
-    startPeriodicScanning();
   });
 } else {
   observeNewMessages();
-  startPeriodicScanning();
 }

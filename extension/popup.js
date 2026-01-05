@@ -153,7 +153,7 @@ function setEnabled(value, callback) {
   });
 }
 
-async function runAnalysisIfEnabled() {
+function runAnalysisIfEnabled() {
   getEnabled((enabled) => {
     setToggleUI(enabled);
     if (!enabled) {

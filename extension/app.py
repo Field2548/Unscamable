@@ -33,15 +33,14 @@ def summarize_message_scores(messages):
     summaries = []
     for msg in messages:
         score, categories = calculate_message_risk_score(msg)
-        if score <= 0:
-            continue
-
-        formatted_categories = [format_category_name(cat) for cat in categories]
-        summaries.append({
-            "text": msg,
-            "score": score,
-            "categories": formatted_categories or ["Suspicious activity"]
-        })
+        # Include messages that have any detected categories (even if score is 0)
+        if categories:
+            formatted_categories = [format_category_name(cat) for cat in categories]
+            summaries.append({
+                "text": msg,
+                "score": score,
+                "categories": formatted_categories or ["Suspicious activity"]
+            })
     return summaries
 
 
@@ -59,9 +58,21 @@ def run_nlp_pipeline(raw_text: str):
     grouped = group_chat_messages(extracted) if extracted else []
     analysis_units = grouped if grouped else extracted
 
+    print(f"[DEBUG NLP] Raw text length: {len(raw_text)}")
+    print(f"[DEBUG NLP] Extracted messages: {len(extracted)}")
+    print(f"[DEBUG NLP] Grouped messages: {len(grouped)}")
+    print(f"[DEBUG NLP] Analysis units: {len(analysis_units)}")
+    for i, unit in enumerate(analysis_units):
+        from NLP.risk_score_message import calculate_message_risk_score
+        score, cats = calculate_message_risk_score(unit)
+        print(f"[DEBUG NLP]   Unit {i}: {unit[:60]}... Score={score}, Categories={cats}")
+
     chat_report = analyze_chat(analysis_units)
     summaries = summarize_message_scores(analysis_units)
 
+    print(f"[DEBUG NLP] Chat report detected_categories: {chat_report.get('detected_categories')}")
+    print(f"[DEBUG NLP] Message summaries count: {len(summaries)}")
+    
     return {
         "extracted_messages": extracted,
         "grouped_messages": grouped,
@@ -73,20 +84,30 @@ def run_nlp_pipeline(raw_text: str):
 def build_flags(chat_report, message_summaries):
     flags = []
 
+    # Add category-level summaries
     for label, count in (chat_report.get("detected_categories") or {}).items():
         flags.append(f"{label}: detected in {count} message(s)")
 
+    # Add reason if exists
     reason = chat_report.get("reason")
     if reason:
         flags.append(reason.capitalize())
 
-    for summary in message_summaries[:3]:  # show up to 3 sample snippets
-        categories = ", ".join(summary["categories"])
-        snippet = summary["text"].strip()
-        if len(snippet) > 120:
-            snippet = snippet[:117] + "..."
-        flags.append(f"{categories} → \"{snippet}\" (+{summary['score']} pts)")
+    # Show all message summaries (including those with score 0 or more)
+    # This ensures we capture all instances of detected factors
+    for summary in message_summaries:
+        if summary.get("categories"):  # Only show if there are categories
+            categories = ", ".join(summary["categories"])
+            snippet = summary["text"].strip()
+            if len(snippet) > 120:
+                snippet = snippet[:117] + "..."
+            flags.append(f"{categories} → \"{snippet}\"")
 
+    print(f"[DEBUG] Detected categories: {chat_report.get('detected_categories')}")
+    print(f"[DEBUG] Total flags: {len(flags)}")
+    for i, flag in enumerate(flags):
+        print(f"[DEBUG] Flag {i}: {flag[:80]}...")
+    
     return flags
 
 
@@ -180,6 +201,11 @@ def analyze():
     flags = build_flags(chat_report, nlp_results["message_summaries"])
 
     risk_score = chat_report["chat_risk_score"]
+    
+    # Debug: Log the score breakdown
+    message_scores_total = sum(msg['score'] for msg in nlp_results["message_summaries"])
+    logger.info(f"Chat risk score: {risk_score}, Message summaries total: {message_scores_total}, Messages count: {len(nlp_results['message_summaries'])}")
+    
     bank_bonus = 15 if bank_accounts else 0
     if bank_accounts:
         flags.append("พบรูปแบบเลขบัญชีที่อาจเกี่ยวข้องกับการหลอกลวง")

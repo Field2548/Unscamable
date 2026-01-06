@@ -22,43 +22,44 @@ NORMALIZED_KEYWORDS = {
 def calculate_message_risk_score(message: str) -> Tuple[int, List[str]]:
     """Assign a phishing risk score based on keyword and regex matches."""
     score = 0
-    matched_categories: List[str] = []
+    matched_categories_set = set()  # Use set to avoid duplicates
     normalized_message = _normalize(message)
 
+    # Check keywords from categories
     for category, data in CATEGORIES.items():
         normalized_keywords = NORMALIZED_KEYWORDS[category]
         for keyword, normalized_keyword in zip(data["keywords"], normalized_keywords):
             if keyword in message or normalized_keyword in normalized_message:
                 score += data["weight"]
-                matched_categories.append(category)
+                matched_categories_set.add(category)
                 break  # prevent double counting same category
 
     # URL regex (strong signal)
     if REGEX["url"].search(message):
         score += REGEX_WEIGHT["url"]
-        matched_categories.append("url")
+        matched_categories_set.add("url")
 
     # Money regex (strong signal)
     if REGEX["money"].search(message):
         score += REGEX_WEIGHT["money"]
-        matched_categories.append("money")
+        matched_categories_set.add("money")
 
     # Time pressure regex (moderate signal)
     if REGEX["time_pressure"].search(message):
         score += REGEX_WEIGHT["time_pressure"]
-        matched_categories.append("time_pressure")
+        matched_categories_set.add("time_pressure")
 
     # OTP regex (strong signal)
     if REGEX["otp"].search(message):
         score += REGEX_WEIGHT["otp"]
-        matched_categories.append("otp")
+        matched_categories_set.add("otp")
 
     # Bonus for multiple manipulation techniques
+    matched_categories = list(matched_categories_set)
     if len(matched_categories) >= 3:
         score += 20
     elif len(matched_categories) == 2:
         score += 10
 
-    normalized_categories = list(dict.fromkeys(matched_categories))
     score = min(score, 100)
-    return score, normalized_categories
+    return score, matched_categories

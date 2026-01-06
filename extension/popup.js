@@ -22,13 +22,13 @@ function showLoading() {
   const header = document.querySelector('.header');
   const riskLevel = document.getElementById('riskLevel');
   const riskScore = document.getElementById('riskScore');
-  const factorsList = document.getElementById('factorsList');
+  const categoriesContainer = document.getElementById('categoriesContainer');
   
   // Update UI to show scanning state with blue background
   header.style.background = 'linear-gradient(135deg, #42A5F5 0%, #1E88E5 100%)';
   riskLevel.textContent = 'Scanning...';
   riskScore.textContent = '...';
-  factorsList.innerHTML = '<li>Analyzing text for scam patterns...</li>';
+  categoriesContainer.innerHTML = '<div class="category-item"><p class="category-name">Analyzing text for scam patterns...</p></div>';
   
   // Notify service worker to set scanning state (service worker manages icons)
   loadingActive = true;
@@ -89,25 +89,151 @@ function displayResult(result) {
 
   // Service worker will automatically reset to idle state after analysis
 
-  const factorsList = document.getElementById('factorsList');
-  factorsList.innerHTML = '';
+  const categoriesContainer = document.getElementById('categoriesContainer');
+  categoriesContainer.innerHTML = '';
 
   if (result.flags && result.flags.length > 0) {
+    // Parse flags to extract category and message information
+    const categoriesMap = {};
+    
     result.flags.forEach(flag => {
-      const li = document.createElement('li');
-      li.textContent = flag;
-      factorsList.appendChild(li);
+      // Parse flag format: "Category: detected in X message(s)" or "Category, ... → "message content""
+      let category = flag;
+      let message = '';
+      let count = 1;
+      
+      if (flag.includes(': detected in')) {
+        // Format: "Category: detected in X message(s)"
+        const match = flag.match(/^(.+?):\s+detected in (\d+) message\(s\)$/);
+        if (match) {
+          category = match[1];
+          count = parseInt(match[2]);
+        }
+      } else if (flag.includes(' → ')) {
+        // Format: "Category, ... → "message content""
+        const parts = flag.split(' → ');
+        const categoryPart = parts[0];
+        message = parts[1] || '';
+        
+        // Extract main category (first category before comma)
+        const categoryMatch = categoryPart.match(/^([^,]+)/);
+        if (categoryMatch) {
+          category = categoryMatch[1];
+        }
+      }
+      
+      if (!categoriesMap[category]) {
+        categoriesMap[category] = {
+          name: category,
+          messages: [],
+          count: 0
+        };
+      }
+      
+      if (message) {
+        categoriesMap[category].messages.push(message);
+      }
+      categoriesMap[category].count = Math.max(categoriesMap[category].count, count);
+    });
+    
+    // Create category cards
+    Object.keys(categoriesMap).forEach(key => {
+      const categoryData = categoriesMap[key];
+      const categoryDiv = document.createElement('div');
+      categoryDiv.className = 'category-item';
+      
+      const categoryName = document.createElement('p');
+      categoryName.className = 'category-name';
+      categoryName.textContent = categoryData.name;
+      categoryDiv.appendChild(categoryName);
+      
+      if (categoryData.messages.length > 0) {
+        const messagesList = document.createElement('ul');
+        messagesList.className = 'messages-list';
+        
+        categoryData.messages.forEach(msg => {
+          const li = document.createElement('li');
+          const wrapper = document.createElement('div');
+          wrapper.className = 'message-wrapper';
+          
+          const msgText = document.createElement('span');
+          msgText.className = 'message-text truncated';
+          
+          const isLong = msg.length > 80;
+          if (isLong) {
+            msgText.textContent = msg.substring(0, 80) + '...';
+          } else {
+            msgText.textContent = msg;
+          }
+          wrapper.appendChild(msgText);
+          
+          if (isLong) {
+            const expandBtn = document.createElement('button');
+            expandBtn.className = 'expand-btn';
+            expandBtn.textContent = 'More';
+            
+            let isExpanded = false;
+            expandBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              isExpanded = !isExpanded;
+              
+              if (isExpanded) {
+                msgText.textContent = msg;
+                msgText.className = 'message-text full';
+                expandBtn.textContent = 'Less';
+              } else {
+                msgText.textContent = msg.substring(0, 80) + '...';
+                msgText.className = 'message-text truncated';
+                expandBtn.textContent = 'More';
+              }
+            });
+            
+            wrapper.appendChild(expandBtn);
+          }
+          
+          li.appendChild(wrapper);
+          messagesList.appendChild(li);
+        });
+        
+        categoryDiv.appendChild(messagesList);
+      }
+      
+      const countDiv = document.createElement('div');
+      countDiv.className = 'message-count';
+      countDiv.textContent = `Detected in ${categoryData.count} message(s)`;
+      categoryDiv.appendChild(countDiv);
+      
+      categoriesContainer.appendChild(categoryDiv);
     });
   } else {
-    const li = document.createElement('li');
-    li.textContent = 'No suspicious factors detected';
-    factorsList.appendChild(li);
+    const noneDiv = document.createElement('div');
+    noneDiv.className = 'category-item';
+    const p = document.createElement('p');
+    p.className = 'category-name';
+    p.textContent = 'No suspicious factors detected';
+    noneDiv.appendChild(p);
+    categoriesContainer.appendChild(noneDiv);
   }
 
   if (result.entities_found && result.entities_found.length > 0) {
-    const li = document.createElement('li');
-    li.textContent = `Blacklisted Account: ${result.entities_found[0]}`;
-    factorsList.appendChild(li);
+    const blacklistDiv = document.createElement('div');
+    blacklistDiv.className = 'category-item';
+    const categoryName = document.createElement('p');
+    categoryName.className = 'category-name';
+    categoryName.textContent = 'Blacklisted Account';
+    blacklistDiv.appendChild(categoryName);
+    
+    const messagesList = document.createElement('ul');
+    messagesList.className = 'messages-list';
+    
+    result.entities_found.forEach(entity => {
+      const li = document.createElement('li');
+      li.textContent = entity;
+      messagesList.appendChild(li);
+    });
+    
+    blacklistDiv.appendChild(messagesList);
+    categoriesContainer.appendChild(blacklistDiv);
   }
 }
 
@@ -130,8 +256,8 @@ function setPausedUI() {
   document.getElementById('riskLevel').textContent = 'Paused';
   document.getElementById('riskScore').textContent = '-';
   document.querySelector('.risk-number').style.color = '#757575';
-  const factorsList = document.getElementById('factorsList');
-  factorsList.innerHTML = '<li>Extension is paused. Toggle to resume analysis.</li>';
+  const categoriesContainer = document.getElementById('categoriesContainer');
+  categoriesContainer.innerHTML = '<div class="category-item"><p class="category-name">Extension is paused. Toggle to resume analysis.</p></div>';
 }
 
 function setToggleUI(enabled) {
@@ -170,7 +296,7 @@ function runAnalysisIfEnabled() {
 
       if (tab.url.startsWith('chrome://')) {
         document.getElementById('riskLevel').textContent = 'Unavailable';
-        document.getElementById('factorsList').innerHTML = '<li>Cannot scan Chrome system pages</li>';
+        document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Cannot scan Chrome system pages</p></div>';
         return;
       }
 
@@ -183,7 +309,7 @@ function runAnalysisIfEnabled() {
           console.error('[Unscamable] Content script error:', lastError?.message || lastError?.toString() || 'Unknown error');
           hideLoading();
           document.getElementById('riskLevel').textContent = 'Error';
-          document.getElementById('factorsList').innerHTML = '<li>Refresh the page and try again</li>';
+          document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Refresh the page and try again</p></div>';
           return;
         }
 
@@ -191,7 +317,7 @@ function runAnalysisIfEnabled() {
           console.error('[Unscamable] No response from content script');
           hideLoading();
           document.getElementById('riskLevel').textContent = 'Error';
-          document.getElementById('factorsList').innerHTML = '<li>Refresh the page and try again</li>';
+          document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Refresh the page and try again</p></div>';
           return;
         }
 
@@ -211,7 +337,7 @@ function runAnalysisIfEnabled() {
           } catch (error) {
             hideLoading();
             document.getElementById('riskLevel').textContent = 'Error';
-            document.getElementById('factorsList').innerHTML = '<li>Backend not running. Start Flask server on port 5000</li>';
+            document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Backend not running. Start Flask server on port 5000</p></div>';
             console.error('[Unscamable] Fetch error:', error?.message || String(error));
           }
         })();

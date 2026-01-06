@@ -45,8 +45,9 @@ def format_detected_categories(counts):
         format_category_label(category): count
         for category, count in counts.items()
     }
- 
-# Fuction for analyzing chat messages
+
+
+# Function for analyzing chat messages
 def analyze_chat(chat_messages):
     chat = ChatState()
 
@@ -60,39 +61,45 @@ def analyze_chat(chat_messages):
             chat.category_counts[category] = chat.category_counts.get(category, 0) + 1
             chat.unique_categories.add(category)
 
-    repetition_bonus = apply_repetition_bonus(chat)
-    escalation_bonus = apply_escalation_bonus(chat)
+    repetition_bonus_details, repetition_bonus_points = apply_repetition_bonus(chat)
+    escalation_info = apply_escalation_bonus(chat)
 
     chat.total_score = min(chat.total_score, 100)
 
     return build_output(
         chat,
         chat.total_score,
-        repetition_bonus,
-        escalation_bonus
+        repetition_bonus_details,
+        escalation_info
     )
+
 
 # Function for repetition bonus       
 def apply_repetition_bonus(chat: ChatState):
     repeated_categories = []
+    repetition_bonus_points = 0
     for cat, count in chat.category_counts.items():
         if count >= 3:
             chat.total_score += 15
-            repeated_categories.append(cat)
+            repetition_bonus_points += 15
+            repeated_categories.append((cat, count, 15))
         elif count == 2:
             chat.total_score += 8
-            repeated_categories.append(cat)
-    return repeated_categories
+            repetition_bonus_points += 8
+            repeated_categories.append((cat, count, 8))
+    return repeated_categories, repetition_bonus_points
+
 
 # Function for escalation bonus
 def apply_escalation_bonus(chat: ChatState):
     if len(chat.unique_categories) >= 3:
         chat.total_score += 20
-        return True
+        return True, 20
     elif len(chat.unique_categories) == 2:
         chat.total_score += 10
-        return True
-    return False
+        return True, 10
+    return False, 0
+
 
 # Function to build output
 def build_reason(chat, repeated_categories, escalated):
@@ -110,11 +117,22 @@ def build_reason(chat, repeated_categories, escalated):
 
     return " with ".join(reasons)
 
+
 # output formatter
-def build_output(chat, final_score, repeated_categories, escalated):
+def build_output(chat, final_score, repeated_categories, escalation_info):
+    escalated, escalation_bonus = escalation_info if isinstance(escalation_info, tuple) else (escalation_info, 0)
+    
+    # Calculate total repetition bonus
+    repetition_bonus_points = sum(points for _, _, points in repeated_categories) if repeated_categories else 0
+    
     return {
         "chat_risk_score": final_score,
         "risk_level": classify_risk(final_score),
         "detected_categories": format_detected_categories(chat.category_counts),
-        "reason": build_reason(chat, repeated_categories, escalated)
+        "reason": build_reason(chat, [cat[0] for cat in repeated_categories] if repeated_categories else [], escalated),
+        "repetition_bonus_details": repeated_categories,
+        "repetition_bonus_points": repetition_bonus_points,
+        "escalation_bonus": escalation_bonus,
+        "escalation_bonus_points": escalation_bonus,
+        "total_unique_categories": len(chat.unique_categories)
     }

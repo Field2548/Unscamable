@@ -6,6 +6,9 @@ cd c:\Users\creep\Documents\GitHub\Unscamable\extension; C:/Users/creep/AppData/
 
 Set-Location 'c:\Users\thinn\OneDrive\Documents\GitHub\Unscamable\extension'; & 'C:/Users/thinn/OneDrive/Documents/GitHub/Unscamable/.venv/Scripts/python.exe' -m flask run
 
+Thinnaphop's PC:
+cd "c:\Users\thinn\OneDrive\Documents\GitHub\Unscamable\extension"
+C:/Users/thinn/OneDrive/Documents/GitHub/Unscamable/.venv/Scripts/python.exe app.py
 
 Field's-Mac-Air:Desktop fieldsmacair$
 FLASK_APP=/Users/fieldsmacair/Deskt

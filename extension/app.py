@@ -82,26 +82,85 @@ def run_nlp_pipeline(raw_text: str):
 
 
 def build_flags(chat_report, message_summaries):
+    from NLP.scam_keywords import CATEGORIES
+    
+    # Map internal category names to display names that match popup.js
+    CATEGORY_DISPLAY_NAMES = {
+        "urgency": "Urgency",
+        "identity_threat": "Identity Threat",
+        "financial_pressure": "Financial Pressure",
+        "authority": "Authority",
+        "delivery": "Delivery Scams",
+        "promotion": "Promotional Bait",
+        "link": "Link Requests"
+    }
+    
     flags = []
 
-    # Add category-level summaries
-    for label, count in (chat_report.get("detected_categories") or {}).items():
-        flags.append(f"{label}: detected in {count} message(s)")
+    # Build helper maps
+    keyword_to_category = {}
+    category_to_keywords = {}
+    for category, data in CATEGORIES.items():
+        kws = [kw.lower() for kw in data.get("keywords", [])]
+        category_to_keywords[category] = kws
+        for keyword in kws:
+            keyword_to_category[keyword] = category
+
+    # Extract matched keywords from message summaries
+    matched_keywords_by_category = {}
+    
+    # Pass 1: collect per-message detected categories
+    for summary in message_summaries:
+        detected_cats = summary.get("categories") or []
+        if not detected_cats:
+            continue
+
+        text = summary["text"].lower()
+
+        # Use only the categories detected for this message to avoid overmatching
+        for display_cat in detected_cats:
+            # Reverse-map display name back to internal key
+            internal_cat = None
+            for k, v in CATEGORY_DISPLAY_NAMES.items():
+                if v == display_cat:
+                    internal_cat = k
+                    break
+            if not internal_cat:
+                continue
+
+            for keyword in category_to_keywords.get(internal_cat, []):
+                if keyword in text:
+                    if internal_cat not in matched_keywords_by_category:
+                        matched_keywords_by_category[internal_cat] = set()
+                    matched_keywords_by_category[internal_cat].add(keyword)
+
+    # Pass 2: ensure we gather all keywords for categories detected in the chat
+    detected_cats_overall = chat_report.get("detected_categories") or {}
+    # Reverse map display label -> internal key
+    DISPLAY_TO_INTERNAL = {v: k for k, v in CATEGORY_DISPLAY_NAMES.items()}
+    for display_cat in detected_cats_overall.keys():
+        internal_cat = DISPLAY_TO_INTERNAL.get(display_cat, display_cat)
+        texts_joined = "\n".join(ms["text"].lower() for ms in message_summaries if ms.get("text"))
+        for keyword in category_to_keywords.get(internal_cat, []):
+            if keyword in texts_joined:
+                if internal_cat not in matched_keywords_by_category:
+                    matched_keywords_by_category[internal_cat] = set()
+                matched_keywords_by_category[internal_cat].add(keyword)
+    
+    # Add matched keywords as flags grouped by category with display names
+    for category, keywords in matched_keywords_by_category.items():
+        display_name = CATEGORY_DISPLAY_NAMES.get(category, category)
+        sorted_keywords = sorted(keywords)
+        joined = ", ".join(sorted_keywords)
+        flags.append(f"{display_name} → \"{joined}\"")
 
     # Add reason if exists
     reason = chat_report.get("reason")
     if reason:
         flags.append(reason.capitalize())
 
-    # Show all message summaries (including those with score 0 or more)
-    # This ensures we capture all instances of detected factors
-    for summary in message_summaries:
-        if summary.get("categories"):  # Only show if there are categories
-            categories = ", ".join(summary["categories"])
-            snippet = summary["text"].strip()
-            if len(snippet) > 120:
-                snippet = snippet[:117] + "..."
-            flags.append(f"{categories} → \"{snippet}\"")
+    if not flags:
+        flags = ["No suspicious factors detected"]
 
     print(f"[DEBUG] Detected categories: {chat_report.get('detected_categories')}")
     print(f"[DEBUG] Total flags: {len(flags)}")

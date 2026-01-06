@@ -166,6 +166,25 @@ function isUserMessage(element, platform) {
       // Continue
     }
     
+    // Method 3: Check for background color or styling specific to user messages
+    const bgColor = styles.backgroundColor;
+    // User messages on Messenger are typically blue/light color, other messages are light gray
+    // Check if background suggests this is user's message
+    if (bgColor && (bgColor.includes('rgb(0, 132, 255)') || bgColor.includes('rgb(31, 121, 226)'))) {
+      return true; // Blue background typical for user messages
+    }
+    
+    // Method 4: More aggressive position check
+    // User messages are typically in right 40% of container area
+    const containerWidth = containerRect.width;
+    const messageCenter = rect.left - containerRect.left + (rect.width / 2);
+    
+    // If message is in right 35% of container, likely user's message
+    if (messageCenter > containerWidth * 0.65) {
+      console.log('[Unscamable] Filtering out user message at position:', messageCenter, 'of', containerWidth);
+      return true;
+    }
+    
     // If we get here, it's likely a message from someone else (left side)
     return false;
   }

@@ -95,14 +95,14 @@ function displayResult(result) {
   // Build categories map focused on the snippets tied to each category
   const categoriesMap = {};
   const CATEGORY_KEYWORDS = {
-    Authority: ["ตำรวจ", "เจ้าหน้าที่", "กรม", "กระทรวง", "ฝ่ายความปลอดภัย", "ศาล", "หมายศาล", "คดีความ", "ปปง.", "สิทธิ์รัฐ", "ธนาคาร", "ศูนย์บริการ", "ฝ่ายกฎหมาย"],
-    "Financial Pressure": ["ยอดค้างชำระ", "ค้างชำระ", "ค่าปรับ", "ค่าธรรมเนียม", "หนี้ค้าง", "ชำระเงิน", "โอนเงิน", "จ่ายบิล", "โอนเงินผิดปกติ", "คืนเงิน", "โอนเงินคืน", "ชำระค่าปรับ", "ค่าไฟฟ้า"],
+    "Authority" : ["ตำรวจ", "เจ้าหน้าที่", "กรม", "กระทรวง", "ฝ่ายความปลอดภัย", "ศาล", "หมายศาล", "คดีความ", "ปปง.", "สิทธิ์รัฐ", "ธนาคาร", "ศูนย์บริการ", "ฝ่ายกฎหมาย"],
+    "Financial Pressure": ["ยอดค้างชำระ", "ค้างชำระ", "ค่าปรับ", "ค่าธรรมเนียม", "หนี้ค้าง", "ชำระเงิน", "โอนเงิน", "จ่ายบิล", "โอนเงินผิดปกติ", "คืนเงิน", "โอนเงินคืน", "ใบสั่งออนไลน์", "ชำระค่าปรับ", "วงเงินเหลือ", "ค่าไฟฟ้า", "ค่าปรับจราจร"],
     "OTP Request": ["รหัส OTP", "OTP"],
-    "Promotional Bait": ["ได้รับรางวัล", "โปรโมชั่น", "โปรพิเศษ", "เงินคืน", "กำไรการันตี"],
-    "Link Requests": ["คลิกลิงก์", "กดลิงก์", "ตรวจสอบที่", "ตรวจสอบเลย", "คลิกยืนยัน", "แอดไลน์"],
-    "Delivery Scams": ["พัสดุ", "ขนส่ง", "จัดส่ง", "เลขแทรกกิ้ง", "ยืนยันการจัดส่ง", "ไม่สามารถจัดส่ง"],
-    Urgency: ["ด่วน", "เร่งด่วน", "ทันที", "วันนี้เท่านั้น", "ครั้งสุดท้าย", "จะถูกระงับ", "ระงับบริการ"],
-    "Identity Threat": ["บัญชีของคุณ", "บัญชีของท่าน", "ยืนยันตัวตน", "ตรวจสอบตัวตน", "ยืนยันความปลอดภัย", "ระบบตรวจพบ", "บัญชีถูกแฮก", "ระงับบัญชีชั่วคราว"]
+    "Promotional Bait": ["ได้รับรางวัล", "iPhone", "โปรโมชั่น", "โปรเด็ด", "โปรพิเศษ", "ฝาก100รับ200", "เงินคืน", "กำไรการันตี", "ลงทุนน้อย", "งานพาร์ทไทม์", "รายได้ดี", "รับของรางวัล", "แบบสอบถาม", "ฟรี", "ระบบออโต้", "ไม่มีขั้นต่ำ"],
+    "Link Requests": ["คลิกลิงก์", "กดลิงก์", "ตรวจสอบที่", "ตรวจสอบเลย", "ติดต่อด่วน", "ติดต่อเจ้าหน้าที่", "แอดไลน์", "คลิกยืนยัน", "เพื่อตรวจสอบ"],
+    "Delivery Scams": ["พัสดุ", "ขนส่ง", "จัดส่ง", "เลขแทรกกิ้ง", "ติดต่อผู้รับไม่ได้", "ยืนยันการจัดส่ง", "ไม่สามารถจัดส่ง", "เช็กสถานะ"],
+    "Urgency": ["ด่วน", "เร่งด่วน", "ภายใน 24 ชั่วโมง", "ทันที", "วันนี้เท่านั้น", "หมดอายุวันนี้", "ครั้งสุดท้าย", "สุดท้าย", "จะถูกระงับ", "ถูกระงับ", "ระงับบัญชี", "ระงับบริการ", "ถูกปิดใช้งาน", "ลงทะเบียนด่วน"],
+    "Identity Threat": ["บัญชีของคุณ", "บัญชีของท่าน", "ยืนยันตัวตน", "ตรวจสอบตัวตน", "รหัส OTP", "ยืนยันความปลอดภัย", "ระบบตรวจพบ", "การเข้าถึงผิดปกติ", "บัญชีถูกแฮก", "ระงับบัญชีชั่วคราว"]
   };
 
   const focusSnippet = (cat, text) => {
@@ -125,23 +125,26 @@ function displayResult(result) {
       if (flag.includes(' → ')) {
         const parts = flag.split(' → ');
         const categoryPart = parts[0];
-        const snippet = parts[1] || '';
+        let snippet = parts[1] || '';
+        // Remove quotes from snippet if present
+        snippet = snippet.replace(/^"|"$/g, '');
         const categories = categoryPart.split(',').map((c) => c.trim()).filter(Boolean);
         categories.forEach((cat) => {
-          if (!categoriesMap[cat]) {
-            categoriesMap[cat] = { name: cat, messages: [], messageSet: new Set(), count: 0 };
+          const normalizedCat = cat === 'Time Pressure' ? 'Urgency' : cat;
+          if (!categoriesMap[normalizedCat]) {
+            categoriesMap[normalizedCat] = { name: normalizedCat, messages: [], messageSet: new Set(), count: 0 };
           }
-          const focused = focusSnippet(cat, snippet);
-          if (!shouldSkipSnippet(focused) && !categoriesMap[cat].messageSet.has(focused)) {
-            categoriesMap[cat].messageSet.add(focused);
-            categoriesMap[cat].messages.push(focused);
+          const focused = snippet.includes(',') ? snippet : focusSnippet(normalizedCat, snippet);
+          if (!shouldSkipSnippet(focused) && !categoriesMap[normalizedCat].messageSet.has(focused)) {
+            categoriesMap[normalizedCat].messageSet.add(focused);
+            categoriesMap[normalizedCat].messages.push(focused);
           }
-          categoriesMap[cat].count += 1;
+          categoriesMap[normalizedCat].count += 1;
         });
       } else if (flag.includes(': detected in')) {
         const match = flag.match(/^(.+?):\s+detected in (\d+) message\(s\)$/);
         if (match) {
-          const cat = match[1];
+          const cat = match[1] === 'Time Pressure' ? 'Urgency' : match[1];
           const cnt = parseInt(match[2], 10);
           if (!categoriesMap[cat]) {
             categoriesMap[cat] = { name: cat, messages: [], messageSet: new Set(), count: 0 };
@@ -158,15 +161,16 @@ function displayResult(result) {
     messageSummaries.forEach((summary) => {
       const text = summary.text || '';
       (summary.categories || []).forEach((cat) => {
+        const normalizedCat = cat === 'Time Pressure' ? 'Urgency' : cat;
         if (!categoriesMap[cat]) {
-          categoriesMap[cat] = { name: cat, messages: [], messageSet: new Set(), count: 0 };
+          categoriesMap[normalizedCat] = { name: normalizedCat, messages: [], messageSet: new Set(), count: 0 };
         }
-        const focused = focusSnippet(cat, text);
-        if (!shouldSkipSnippet(focused) && !categoriesMap[cat].messageSet.has(focused)) {
-          categoriesMap[cat].messageSet.add(focused);
-          categoriesMap[cat].messages.push(focused);
+        const focused = focusSnippet(normalizedCat, text);
+        if (!shouldSkipSnippet(focused) && !categoriesMap[normalizedCat].messageSet.has(focused)) {
+          categoriesMap[normalizedCat].messageSet.add(focused);
+          categoriesMap[normalizedCat].messages.push(focused);
         }
-        categoriesMap[cat].count += 1;
+        categoriesMap[normalizedCat].count += 1;
       });
     });
   }
@@ -212,13 +216,6 @@ function displayResult(result) {
 
         categoryDiv.appendChild(messagesList);
       }
-
-      const countDiv = document.createElement('div');
-      countDiv.className = 'message-count';
-      countDiv.textContent = categoryData.count > 0
-        ? `Detected in ${categoryData.count} message(s)`
-        : 'Detected';
-      categoryDiv.appendChild(countDiv);
 
       categoriesContainer.appendChild(categoryDiv);
     });

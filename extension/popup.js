@@ -92,120 +92,88 @@ function displayResult(result) {
   const categoriesContainer = document.getElementById('categoriesContainer');
   categoriesContainer.innerHTML = '';
 
+  // Build categories map focused on the snippets tied to each category
+  const categoriesMap = {};
+  const CATEGORY_KEYWORDS = {
+    Authority: ["ตำรวจ", "เจ้าหน้าที่", "กรม", "กระทรวง", "ฝ่ายความปลอดภัย", "ศาล", "หมายศาล", "คดีความ", "ปปง.", "สิทธิ์รัฐ", "ธนาคาร", "ศูนย์บริการ", "ฝ่ายกฎหมาย"],
+    "Financial Pressure": ["ยอดค้างชำระ", "ค้างชำระ", "ค่าปรับ", "ค่าธรรมเนียม", "หนี้ค้าง", "ชำระเงิน", "โอนเงิน", "จ่ายบิล", "โอนเงินผิดปกติ", "คืนเงิน", "โอนเงินคืน", "ชำระค่าปรับ", "ค่าไฟฟ้า"],
+    "OTP Request": ["รหัส OTP", "OTP"],
+    "Promotional Bait": ["ได้รับรางวัล", "โปรโมชั่น", "โปรพิเศษ", "เงินคืน", "กำไรการันตี"],
+    "Link Requests": ["คลิกลิงก์", "กดลิงก์", "ตรวจสอบที่", "ตรวจสอบเลย", "คลิกยืนยัน", "แอดไลน์"],
+    "Delivery Scams": ["พัสดุ", "ขนส่ง", "จัดส่ง", "เลขแทรกกิ้ง", "ยืนยันการจัดส่ง", "ไม่สามารถจัดส่ง"],
+    Urgency: ["ด่วน", "เร่งด่วน", "ทันที", "วันนี้เท่านั้น", "ครั้งสุดท้าย", "จะถูกระงับ", "ระงับบริการ"],
+    "Identity Threat": ["บัญชีของคุณ", "บัญชีของท่าน", "ยืนยันตัวตน", "ตรวจสอบตัวตน", "ยืนยันความปลอดภัย", "ระบบตรวจพบ", "บัญชีถูกแฮก", "ระงับบัญชีชั่วคราว"]
+  };
+
+  const focusSnippet = (cat, text) => {
+    const keywords = CATEGORY_KEYWORDS[cat];
+    if (!keywords || !text) return text;
+    const hit = keywords.find((kw) => text.includes(kw));
+    return hit || text;
+  };
+  const shouldSkipSnippet = (text) => {
+    if (!text) return true;
+    const trimmed = text.trim();
+    // Ignore platform status lines like "Active 4 minutes ago" in Thai
+    if (/^ใช้งานเมื่อ\s+\d+\s+นาที\s+ที่แล้ว/i.test(trimmed)) return true;
+    return false;
+  };
+
+  // Parse flags first: they already contain category labels and snippets
   if (result.flags && result.flags.length > 0) {
-    // Parse flags to extract category and message information
-    const categoriesMap = {};
-    
-    result.flags.forEach(flag => {
-      // Parse flag format: "Category: detected in X message(s)" or "Category, ... → "message content""
-      let category = flag;
-      let message = '';
-      let count = 1;
-      
-      if (flag.includes(': detected in')) {
-        // Format: "Category: detected in X message(s)"
-        const match = flag.match(/^(.+?):\s+detected in (\d+) message\(s\)$/);
-        if (match) {
-          category = match[1];
-          count = parseInt(match[2]);
-        }
-      } else if (flag.includes(' → ')) {
-        // Format: "Category, ... → "message content""
+    result.flags.forEach((flag) => {
+      if (flag.includes(' → ')) {
         const parts = flag.split(' → ');
         const categoryPart = parts[0];
-        message = parts[1] || '';
-        
-        // Extract main category (first category before comma)
-        const categoryMatch = categoryPart.match(/^([^,]+)/);
-        if (categoryMatch) {
-          category = categoryMatch[1];
+        const snippet = parts[1] || '';
+        const categories = categoryPart.split(',').map((c) => c.trim()).filter(Boolean);
+        categories.forEach((cat) => {
+          if (!categoriesMap[cat]) {
+            categoriesMap[cat] = { name: cat, messages: [], messageSet: new Set(), count: 0 };
+          }
+          const focused = focusSnippet(cat, snippet);
+          if (!shouldSkipSnippet(focused) && !categoriesMap[cat].messageSet.has(focused)) {
+            categoriesMap[cat].messageSet.add(focused);
+            categoriesMap[cat].messages.push(focused);
+          }
+          categoriesMap[cat].count += 1;
+        });
+      } else if (flag.includes(': detected in')) {
+        const match = flag.match(/^(.+?):\s+detected in (\d+) message\(s\)$/);
+        if (match) {
+          const cat = match[1];
+          const cnt = parseInt(match[2], 10);
+          if (!categoriesMap[cat]) {
+            categoriesMap[cat] = { name: cat, messages: [], messageSet: new Set(), count: 0 };
+          }
+          categoriesMap[cat].count = Math.max(categoriesMap[cat].count, cnt || 0);
         }
       }
-      
-      if (!categoriesMap[category]) {
-        categoriesMap[category] = {
-          name: category,
-          messages: [],
-          count: 0
-        };
-      }
-      
-      if (message) {
-        categoriesMap[category].messages.push(message);
-      }
-      categoriesMap[category].count = Math.max(categoriesMap[category].count, count);
     });
-    
-    // Create category cards
-    Object.keys(categoriesMap).forEach(key => {
-      const categoryData = categoriesMap[key];
-      const categoryDiv = document.createElement('div');
-      categoryDiv.className = 'category-item';
-      
-      const categoryName = document.createElement('p');
-      categoryName.className = 'category-name';
-      categoryName.textContent = categoryData.name;
-      categoryDiv.appendChild(categoryName);
-      
-      if (categoryData.messages.length > 0) {
-        const messagesList = document.createElement('ul');
-        messagesList.className = 'messages-list';
-        
-        categoryData.messages.forEach(msg => {
-          const li = document.createElement('li');
-          const wrapper = document.createElement('div');
-          wrapper.className = 'message-wrapper';
-          
-          const msgText = document.createElement('span');
-          msgText.className = 'message-text truncated';
-          
-          const isLong = msg.length > 80;
-          if (isLong) {
-            msgText.textContent = msg.substring(0, 80) + '...';
-          } else {
-            msgText.textContent = msg;
-          }
-          wrapper.appendChild(msgText);
-          
-          if (isLong) {
-            const expandBtn = document.createElement('button');
-            expandBtn.className = 'expand-btn';
-            expandBtn.textContent = 'More';
-            
-            let isExpanded = false;
-            expandBtn.addEventListener('click', (e) => {
-              e.preventDefault();
-              isExpanded = !isExpanded;
-              
-              if (isExpanded) {
-                msgText.textContent = msg;
-                msgText.className = 'message-text full';
-                expandBtn.textContent = 'Less';
-              } else {
-                msgText.textContent = msg.substring(0, 80) + '...';
-                msgText.className = 'message-text truncated';
-                expandBtn.textContent = 'More';
-              }
-            });
-            
-            wrapper.appendChild(expandBtn);
-          }
-          
-          li.appendChild(wrapper);
-          messagesList.appendChild(li);
-        });
-        
-        categoryDiv.appendChild(messagesList);
-      }
-      
-      const countDiv = document.createElement('div');
-      countDiv.className = 'message-count';
-      countDiv.textContent = `Detected in ${categoryData.count} message(s)`;
-      categoryDiv.appendChild(countDiv);
-      
-      categoriesContainer.appendChild(categoryDiv);
+  }
+
+  // If no snippets captured via flags, fall back to message summaries (rare)
+  if (Object.keys(categoriesMap).length === 0) {
+    const messageSummaries = (result.analysis && result.analysis.message_summaries) || [];
+    messageSummaries.forEach((summary) => {
+      const text = summary.text || '';
+      (summary.categories || []).forEach((cat) => {
+        if (!categoriesMap[cat]) {
+          categoriesMap[cat] = { name: cat, messages: [], messageSet: new Set(), count: 0 };
+        }
+        const focused = focusSnippet(cat, text);
+        if (!shouldSkipSnippet(focused) && !categoriesMap[cat].messageSet.has(focused)) {
+          categoriesMap[cat].messageSet.add(focused);
+          categoriesMap[cat].messages.push(focused);
+        }
+        categoriesMap[cat].count += 1;
+      });
     });
-  } else {
+  }
+
+  const categoryKeys = Object.keys(categoriesMap);
+
+  if (categoryKeys.length === 0) {
     const noneDiv = document.createElement('div');
     noneDiv.className = 'category-item';
     const p = document.createElement('p');
@@ -213,6 +181,47 @@ function displayResult(result) {
     p.textContent = 'No suspicious factors detected';
     noneDiv.appendChild(p);
     categoriesContainer.appendChild(noneDiv);
+  } else {
+    categoryKeys.forEach((key) => {
+      const categoryData = categoriesMap[key];
+      const categoryDiv = document.createElement('div');
+      categoryDiv.className = 'category-item';
+
+      const categoryName = document.createElement('p');
+      categoryName.className = 'category-name';
+      categoryName.textContent = categoryData.name;
+      categoryDiv.appendChild(categoryName);
+
+      if (categoryData.messages.length > 0) {
+        const messagesList = document.createElement('ul');
+        messagesList.className = 'messages-list';
+
+        categoryData.messages.forEach((msg) => {
+          const li = document.createElement('li');
+          const wrapper = document.createElement('div');
+          wrapper.className = 'message-wrapper';
+
+          const msgText = document.createElement('span');
+          msgText.className = 'message-text full';
+          msgText.textContent = msg;
+          wrapper.appendChild(msgText);
+
+          li.appendChild(wrapper);
+          messagesList.appendChild(li);
+        });
+
+        categoryDiv.appendChild(messagesList);
+      }
+
+      const countDiv = document.createElement('div');
+      countDiv.className = 'message-count';
+      countDiv.textContent = categoryData.count > 0
+        ? `Detected in ${categoryData.count} message(s)`
+        : 'Detected';
+      categoryDiv.appendChild(countDiv);
+
+      categoriesContainer.appendChild(categoryDiv);
+    });
   }
 
   if (result.entities_found && result.entities_found.length > 0) {

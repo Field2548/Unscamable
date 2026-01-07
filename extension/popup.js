@@ -94,6 +94,7 @@ function displayResult(result) {
 
   // Build categories map focused on the snippets tied to each category
   const categoriesMap = {};
+  // Category keywords and their weights from NLP module (scam_keywords.py)
   const CATEGORY_KEYWORDS = {
     "Authority" : ["ตำรวจ", "เจ้าหน้าที่", "กรม", "กระทรวง", "ฝ่ายความปลอดภัย", "ศาล", "หมายศาล", "คดีความ", "ปปง.", "สิทธิ์รัฐ", "ธนาคาร", "ศูนย์บริการ", "ฝ่ายกฎหมาย", "ฝ่าย กฎหมาย"],
     "Financial Pressure": ["ยอดค้างชำระ", "ค้างชำระ", "ค่าปรับ", "ค่าธรรมเนียม", "หนี้ค้าง", "ชำระเงิน", "โอนเงิน", "จ่ายบิล", "โอนเงินผิดปกติ", "คืนเงิน", "โอนเงินคืน", "ใบสั่งออนไลน์", "ชำระค่าปรับ", "วงเงินเหลือ", "ค่าไฟฟ้า", "ค่าปรับจราจร"],
@@ -104,6 +105,26 @@ function displayResult(result) {
     "Urgency": ["ด่วน", "เร่งด่วน", "ภายใน 24 ชั่วโมง", "ทันที", "วันนี้เท่านั้น", "หมดอายุวันนี้", "ครั้งสุดท้าย", "สุดท้าย", "จะถูกระงับ", "ถูกระงับ", "ระงับบัญชี", "ระงับบริการ", "ถูกปิดใช้งาน", "ลงทะเบียนด่วน"],
     "Identity Threat": ["บัญชีของคุณ", "บัญชีของท่าน", "ยืนยันตัวตน", "ตรวจสอบตัวตน", "รหัส OTP", "ยืนยันความปลอดภัย", "ระบบตรวจพบ", "การเข้าถึงผิดปกติ", "บัญชีถูกแฮก", "ระงับบัญชีชั่วคราว"]
   };
+  
+  // Category weights from NLP scam_keywords.py - determines risk impact
+  const CATEGORY_WEIGHTS = {
+    "Promotional Bait": 30,      // Highest - most deceptive
+    "Identity Threat": 25,        // Very high - directly exploits account access
+    "Authority": 20,              // High - impersonation risk
+    "Financial Pressure": 20,     // High - financial loss risk
+    "Delivery Scams": 20,         // High - delivery fraud risk
+    "Link Requests": 15,          // Medium - clicking risk
+    "OTP Request": 25,            // Very high - account compromise
+    "Urgency": 10                 // Lower weight but common tactic
+  };
+  
+  // Regex pattern weights from NLP _regex.py - additional risk signals
+  const REGEX_WEIGHTS = {
+    "Suspicious URL": 20,          // URL regex weight
+    "Money Mentions": 10,          // Money regex weight  
+    "Time Pressure": 10,           // Time pressure regex weight
+    "OTP Request": 25              // OTP regex weight
+  };
 
   const focusSnippet = (cat, text) => {
     const keywords = CATEGORY_KEYWORDS[cat];
@@ -111,6 +132,25 @@ function displayResult(result) {
     const hit = keywords.find((kw) => text.includes(kw));
     return hit || text;
   };
+  
+  // Get weight indicator for category - shows visual importance based on NLP weights
+  const getWeightIndicator = (category) => {
+    // Check in category weights first
+    let weight = CATEGORY_WEIGHTS[category];
+    
+    // If not found, check in regex weights
+    if (weight === undefined) {
+      weight = REGEX_WEIGHTS[category] || 0;
+    }
+    
+    if (weight >= 30) return "🔴"; // Critical (Promotional Bait)
+    if (weight >= 25) return "🔴"; // Very High (Identity Threat, OTP)
+    if (weight >= 20) return "🟠"; // High (Authority, Financial, Delivery, URL)
+    if (weight >= 15) return "🟡"; // Medium (Link Requests)
+    if (weight >= 10) return "🟡"; // Medium-Low (Money, Time Pressure)
+    return "🟢"; // Lower
+  };
+  
   const shouldSkipSnippet = (text) => {
     if (!text) return true;
     const trimmed = text.trim();
@@ -176,8 +216,21 @@ function displayResult(result) {
   }
 
   const categoryKeys = Object.keys(categoriesMap);
+  
+  // Check for blacklist information from OCR
+  let blacklistDetected = false;
+  if (result.ocr_results && result.ocr_results.blacklist_score > 0) {
+    blacklistDetected = true;
+    const blacklistInfo = result.ocr_results.blacklist_info;
+    categoriesMap['Blacklist'] = {
+      name: 'Blacklisted Account',
+      messages: [`${blacklistInfo.name} (${blacklistInfo.report_count} reports)`],
+      messageSet: new Set([`${blacklistInfo.name} (${blacklistInfo.report_count} reports)`]),
+      count: 1
+    };
+  }
 
-  if (categoryKeys.length === 0) {
+  if (categoryKeys.length === 0 && !blacklistDetected) {
     const noneDiv = document.createElement('div');
     noneDiv.className = 'category-item';
     const p = document.createElement('p');
@@ -186,7 +239,9 @@ function displayResult(result) {
     noneDiv.appendChild(p);
     categoriesContainer.appendChild(noneDiv);
   } else {
-    categoryKeys.forEach((key) => {
+    // Re-get category keys after potentially adding blacklist
+    const allCategoryKeys = Object.keys(categoriesMap);
+    allCategoryKeys.forEach((key) => {
       const categoryData = categoriesMap[key];
       const categoryDiv = document.createElement('div');
       categoryDiv.className = 'category-item';
@@ -220,27 +275,8 @@ function displayResult(result) {
       categoriesContainer.appendChild(categoryDiv);
     });
   }
-
-  if (result.entities_found && result.entities_found.length > 0) {
-    const blacklistDiv = document.createElement('div');
-    blacklistDiv.className = 'category-item';
-    const categoryName = document.createElement('p');
-    categoryName.className = 'category-name';
-    categoryName.textContent = 'Blacklisted Account';
-    blacklistDiv.appendChild(categoryName);
-    
-    const messagesList = document.createElement('ul');
-    messagesList.className = 'messages-list';
-    
-    result.entities_found.forEach(entity => {
-      const li = document.createElement('li');
-      li.textContent = entity;
-      messagesList.appendChild(li);
-    });
-    
-    blacklistDiv.appendChild(messagesList);
-    categoriesContainer.appendChild(blacklistDiv);
-  }
+  
+  // Remove old blacklist display code (replaced by categoriesMap integration above)
 }
 
 // Auto-open popup for high risk
@@ -384,3 +420,5 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   return true;
 });
+
+// Scan image UI removed: popup uses auto-analysis only

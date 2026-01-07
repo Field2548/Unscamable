@@ -49,6 +49,48 @@ def scan_image():
         print(f"🔍 Analyzing image size: {image.shape}...")
         result = run_ocr_scan(temp_filename)
         
+        # Extract account name from result
+        account_name = ""
+        if result.get('status') == 'success':
+            data = result.get('data', {})
+            names = data.get('names', [])
+            if names and len(names) > 0:
+                # Get the first detected name
+                account_name = names[0]
+                # Clean up the name
+                for prefix in ["นาย", "นาง", "น.ส.", "mr", "mrs", "miss", "ms"]:
+                    if account_name.lower().startswith(prefix):
+                        account_name = account_name[len(prefix):]
+                        break
+                # Trim leading punctuation and whitespace
+                account_name = account_name.lstrip(' .:-').strip()
+            
+            # Add account name to result
+            result['account_name'] = account_name
+            
+            # Calculate risk score
+            risk_score = 0
+            flags = []
+            
+            # Check warning flags
+            warning_flags = data.get('warning_flags', [])
+            if warning_flags:
+                for flag in warning_flags:
+                    if flag == "DETECTED_SLIP_BUT_NO_ACCOUNT":
+                        risk_score += 15
+                        flags.append("Slip detected but no account number visible")
+                    elif flag == "HIGH_RISK_WALLET_DETECTED":
+                        risk_score += 20
+                        flags.append("High-risk wallet detected (TrueMoney)")
+            
+            # Check for slip
+            if data.get('is_slip'):
+                risk_score += 10
+                flags.append("Payment slip detected")
+            
+            result['risk_score'] = risk_score
+            result['flags'] = flags
+        
         return jsonify(result)
 
     except Exception as e:

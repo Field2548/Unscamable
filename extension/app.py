@@ -5,6 +5,8 @@ import os
 import sys
 import requests
 import logging
+import json
+from datetime import datetime, timedelta
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +26,80 @@ CORS(app)  # Enable CORS for Chrome extension
 OCR_SERVICE_URL = os.environ.get('OCR_SERVICE_URL', 'http://localhost:5001')
 
 BANK_REGEX = re.compile(r"\d{3}-\d{1}-\d{5}-\d{1}")
+
+def load_blacklist():
+    """Load blacklist data from JSON file"""
+    try:
+        blacklist_path = os.path.join(os.path.dirname(__file__), '..', 'dataset', 'blacklist.json')
+        with open(blacklist_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return data.get('accounts', [])
+    except Exception as e:
+        logger.error(f"Failed to load blacklist: {e}")
+        return []
+
+def calculate_blacklist_score(account_name):
+    """
+    Calculate blacklist score based on report count and freshness
+    Formula: blacklist_score = base_score × freshness_modifier, cap at 40
+    """
+    if not account_name:
+        return 0, None
+    
+    blacklist = load_blacklist()
+    
+    # Check if account name matches any blacklist entry
+    matched_entry = None
+    account_name_lower = account_name.lower().strip()
+    
+    for entry in blacklist:
+        entry_name_lower = entry['name'].lower().strip()
+        if entry_name_lower == account_name_lower or account_name_lower in entry_name_lower or entry_name_lower in account_name_lower:
+            matched_entry = entry
+            break
+    
+    if not matched_entry:
+        return 0, None
+    
+    # Calculate base score from report count
+    report_count = matched_entry.get('report_count', 0)
+    if report_count >= 10:
+        base_score = 40
+    elif report_count >= 6:
+        base_score = 30
+    elif report_count >= 3:
+        base_score = 20
+    elif report_count >= 1:
+        base_score = 10
+    else:
+        base_score = 0
+    
+    # Calculate freshness modifier
+    last_seen = matched_entry.get('last_seen')
+    freshness_modifier = 1.0
+    
+    if last_seen:
+        try:
+            last_seen_date = datetime.strptime(last_seen, '%Y-%m-%d')
+            today = datetime.now()
+            days_ago = (today - last_seen_date).days
+            
+            if days_ago <= 7:
+                freshness_modifier = 1.2
+            elif days_ago <= 30:
+                freshness_modifier = 1.0
+            elif days_ago <= 90:
+                freshness_modifier = 0.8
+            else:
+                freshness_modifier = 0.5
+        except ValueError:
+            pass
+    
+    # Calculate final score
+    blacklist_score = int(base_score * freshness_modifier)
+    blacklist_score = min(40, blacklist_score)  # Cap at 40
+    
+    return blacklist_score, matched_entry
 
 def format_category_name(category: str) -> str:
     return CATEGORY_LABELS.get(category, category.replace("_", " ").title())
@@ -57,11 +133,20 @@ def run_nlp_pipeline(raw_text: str):
     extracted = extract_chat_messages(raw_text)
     grouped = group_chat_messages(extracted) if extracted else []
     analysis_units = grouped if grouped else extracted
+    
+    # Deduplicate: remove exact duplicate messages
+    seen = set()
+    deduplicated = []
+    for msg in analysis_units:
+        if msg not in seen:
+            deduplicated.append(msg)
+            seen.add(msg)
+    analysis_units = deduplicated
 
     print(f"[DEBUG NLP] Raw text length: {len(raw_text)}")
     print(f"[DEBUG NLP] Extracted messages: {len(extracted)}")
     print(f"[DEBUG NLP] Grouped messages: {len(grouped)}")
-    print(f"[DEBUG NLP] Analysis units: {len(analysis_units)}")
+    print(f"[DEBUG NLP] Analysis units: {len(analysis_units)} (after deduplication)")
     for i, unit in enumerate(analysis_units):
         from NLP.risk_score_message import calculate_message_risk_score
         score, cats = calculate_message_risk_score(unit)
@@ -197,7 +282,21 @@ def analyze_image_with_ocr(base64_image):
         )
         
         if response.status_code == 200:
-            return response.json()
+            ocr_result = response.json()
+            
+            # Check for account names in OCR results
+            detected_name = ocr_result.get('account_name', '')
+            blacklist_score = 0
+            blacklist_info = None
+            
+            if detected_name:
+                blacklist_score, blacklist_info = calculate_blacklist_score(detected_name)
+                if blacklist_score > 0:
+                    ocr_result['blacklist_score'] = blacklist_score
+                    ocr_result['blacklist_info'] = blacklist_info
+                    logger.info(f"Blacklist match found: {detected_name} - Score: {blacklist_score}")
+            
+            return ocr_result
         else:
             print(f"⚠️ OCR service returned status {response.status_code}")
             return None
@@ -274,14 +373,25 @@ def analyze():
     
     # If image is provided, send to OCR service for analysis
     ocr_results = None
+    blacklist_score = 0
     if image_data:
         ocr_results = analyze_image_with_ocr(image_data)
-        if ocr_results and ocr_results.get('risk_score', 0) > 0:
-            # Combine text and OCR risk scores
-            combined_score = min(100, risk_score + ocr_results.get('risk_score', 0))
+        if ocr_results:
+            ocr_risk = ocr_results.get('risk_score', 0)
+            blacklist_score = ocr_results.get('blacklist_score', 0)
+            
+            # Combine text, OCR, and blacklist scores
+            combined_score = min(100, risk_score + ocr_risk + blacklist_score)
             status_info = get_status(combined_score)
+            
             if ocr_results.get('flags'):
                 flags.extend(ocr_results['flags'])
+            
+            # Add blacklist flag if detected
+            if blacklist_score > 0 and ocr_results.get('blacklist_info'):
+                info = ocr_results['blacklist_info']
+                flags.append(f"⚠️ Blacklisted Account: {info['name']} ({info['report_count']} reports)")
+            
             risk_score = combined_score
     
     if not flags:
@@ -291,6 +401,7 @@ def analyze():
         **nlp_results,
         "text_risk_score": chat_report["chat_risk_score"],
         "bank_bonus": bank_bonus,
+        "blacklist_score": blacklist_score,
         "message_count": len(messages) if messages else 1
     }
 

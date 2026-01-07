@@ -229,6 +229,16 @@ function extractMessageText(element) {
   return text;
 }
 
+function isElementInViewport(element) {
+  const rect = element.getBoundingClientRect();
+  return (
+    rect.top < window.innerHeight &&
+    rect.bottom > 0 &&
+    rect.left < window.innerWidth &&
+    rect.right > 0
+  );
+}
+
 function getMessageHash(text) {
   // Simple hash to detect duplicate messages
   if (!text) return '';
@@ -277,7 +287,8 @@ function scrapeChatText(platform = null) {
       const elements = mainContainer.querySelectorAll(selector);
       
       for (const el of elements) {
-        if (el && el.offsetHeight > 0) { // only visible elements
+        // Only include visible AND in-viewport messages
+        if (el && el.offsetHeight > 0 && isElementInViewport(el)) {
           // Skip user's own messages (right side)
           if (isUserMessage(el, platform)) {
             continue;

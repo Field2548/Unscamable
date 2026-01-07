@@ -15,8 +15,6 @@ CATEGORY_LABELS = {
     "link": "Link Requests",
     "url": "Suspicious URL",
     "money": "Money Mentions",
-    "time_pressure": "Time Pressure",
-    "otp": "OTP Request",
 }
 
 # Set initial chat state 

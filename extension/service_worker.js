@@ -336,10 +336,23 @@ async function analyzeNewMessages(textOrMessages, tabId) {
         setTimeout(() => reject(new Error('Analysis timeout')), 10000)
       );
 
-      // Build request payload supporting both formats
+      // Capture a visible tab screenshot (base64) for OCR
+      let imageDataUrl = '';
+      try {
+        if (tabId) {
+          const tab = await chrome.tabs.get(tabId);
+          imageDataUrl = await new Promise((resolve) => {
+            chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }, (dataUrl) => resolve(dataUrl || ''));
+          });
+        }
+      } catch (e) {
+        console.warn('[Auto-Scan] Screenshot capture failed:', e?.message || e);
+      }
+
+      // Build request payload supporting both formats (include screenshot for OCR)
       const payload = messages.length > 0 
-        ? { messages: messages }  // New format with metadata
-        : { text: text };         // Legacy format
+        ? { messages: messages, image: imageDataUrl }  // New format with metadata
+        : { text: text, image: imageDataUrl };         // Legacy format
 
       const fetchPromise = fetch(analyzeUrl, {
         method: 'POST',
@@ -518,10 +531,23 @@ async function analyzeTabContent(tabId) {
 
         let analysisResult = { risk_score: 0 };
         try {
+          // Capture a visible tab screenshot for OCR
+          let imageDataUrl = '';
+          try {
+            if (tabId) {
+              const tabInfo = await chrome.tabs.get(tabId);
+              imageDataUrl = await new Promise((resolve) => {
+                chrome.tabs.captureVisibleTab(tabInfo.windowId, { format: 'png' }, (dataUrl) => resolve(dataUrl || ''));
+              });
+            }
+          } catch (e) {
+            console.warn('[Auto-Scan] Screenshot capture failed:', e?.message || e);
+          }
+
           const serverResponse = await fetch(analyzeUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: response.text, image: '' }),
+            body: JSON.stringify({ text: response.text, image: imageDataUrl }),
           });
 
           if (!serverResponse.ok) {

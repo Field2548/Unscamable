@@ -44,16 +44,6 @@ def calculate_message_risk_score(message: str) -> Tuple[int, List[str]]:
         score += REGEX_WEIGHT["money"]
         matched_categories_set.add("money")
 
-    # Time pressure regex (moderate signal)
-    if REGEX["time_pressure"].search(message):
-        score += REGEX_WEIGHT["time_pressure"]
-        matched_categories_set.add("time_pressure")
-
-    # OTP regex (strong signal)
-    if REGEX["otp"].search(message):
-        score += REGEX_WEIGHT["otp"]
-        matched_categories_set.add("otp")
-
     # Bonus for multiple manipulation techniques
     matched_categories = list(matched_categories_set)
     if len(matched_categories) >= 3:

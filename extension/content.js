@@ -285,7 +285,7 @@ function scrapeChatText(platform = null) {
           
           const text = extractMessageText(el);
           
-          if (text.length > 3) { // filter out tiny fragments
+          if (text.length >= 3) { // include short Thai words like "ศาล"
             messages.push(text);
           }
         }
@@ -329,7 +329,7 @@ function extractNewMessages(nodes, platform) {
           }
           
           const text = extractMessageText(node);
-          if (text.length > 3) {
+          if (text.length >= 3) {
             const hash = getMessageHash(text);
             if (!seenMessageHashes.has(hash)) {
               newMessages.push({ text, hash });
@@ -355,7 +355,7 @@ function extractNewMessages(nodes, platform) {
         }
         
         const text = extractMessageText(el);
-        if (text.length > 3) {
+        if (text.length >= 3) {
           const hash = getMessageHash(text);
           if (!seenMessageHashes.has(hash)) {
             newMessages.push({ text, hash });

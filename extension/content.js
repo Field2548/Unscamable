@@ -72,7 +72,6 @@ const USER_MESSAGE_SELECTORS = {
   messenger: [
     // Facebook Messenger specific selectors
     '[data-testid="outgoing_message"]',
-    '[data-testid="incoming_message"]', // Will be inverted - we want to exclude outgoing
     '[class*="x1n2onr6"]', // Blue bubble styling (user messages on right)
   ],
   whatsapp: [
@@ -473,7 +472,10 @@ function performAnalysis() {
   
   // Check if enough time has passed since last analysis
   if (now - lastAnalysisTime < MIN_ANALYSIS_INTERVAL) {
-    console.log('[Unscamable] Skipping analysis (too frequent)');
+    const waitMs = MIN_ANALYSIS_INTERVAL - (now - lastAnalysisTime);
+    console.log('[Unscamable] Skipping analysis (too frequent), retrying in', waitMs, 'ms');
+    clearTimeout(analysisTimeout);
+    analysisTimeout = setTimeout(performAnalysis, waitMs + 50); // Re-run after cooldown
     return;
   }
   

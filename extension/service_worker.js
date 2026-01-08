@@ -253,6 +253,37 @@ function isScanning() {
 }
 
 /**
+ * Best-effort screenshot capture with host/permission checks.
+ * Returns base64 data URL or empty string when not allowed.
+ */
+async function tryCaptureVisibleTab(tabId) {
+  if (!tabId) return '';
+
+  try {
+    const tab = await chrome.tabs.get(tabId);
+
+    // Only attempt capture on http/https pages we can actually access
+    if (!tab.url || !/^https?:/i.test(tab.url)) {
+      return '';
+    }
+
+    return await new Promise((resolve) => {
+      chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }, (dataUrl) => {
+        if (chrome.runtime.lastError) {
+          console.warn('[Auto-Scan] Screenshot capture skipped:', chrome.runtime.lastError.message);
+          resolve('');
+          return;
+        }
+        resolve(dataUrl || '');
+      });
+    });
+  } catch (e) {
+    console.warn('[Auto-Scan] Screenshot capture failed:', e?.message || e);
+    return '';
+  }
+}
+
+/**
  * Initialize the extension to IDLE state on startup
  */
 async function initializeExtension() {
@@ -337,17 +368,7 @@ async function analyzeNewMessages(textOrMessages, tabId) {
       );
 
       // Capture a visible tab screenshot (base64) for OCR
-      let imageDataUrl = '';
-      try {
-        if (tabId) {
-          const tab = await chrome.tabs.get(tabId);
-          imageDataUrl = await new Promise((resolve) => {
-            chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }, (dataUrl) => resolve(dataUrl || ''));
-          });
-        }
-      } catch (e) {
-        console.warn('[Auto-Scan] Screenshot capture failed:', e?.message || e);
-      }
+      const imageDataUrl = await tryCaptureVisibleTab(tabId);
 
       // Build request payload supporting both formats (include screenshot for OCR)
       const payload = messages.length > 0 
@@ -532,17 +553,7 @@ async function analyzeTabContent(tabId) {
         let analysisResult = { risk_score: 0 };
         try {
           // Capture a visible tab screenshot for OCR
-          let imageDataUrl = '';
-          try {
-            if (tabId) {
-              const tabInfo = await chrome.tabs.get(tabId);
-              imageDataUrl = await new Promise((resolve) => {
-                chrome.tabs.captureVisibleTab(tabInfo.windowId, { format: 'png' }, (dataUrl) => resolve(dataUrl || ''));
-              });
-            }
-          } catch (e) {
-            console.warn('[Auto-Scan] Screenshot capture failed:', e?.message || e);
-          }
+          const imageDataUrl = await tryCaptureVisibleTab(tabId);
 
           const serverResponse = await fetch(analyzeUrl, {
             method: 'POST',

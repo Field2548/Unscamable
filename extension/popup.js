@@ -350,6 +350,7 @@ function runAnalysisIfEnabled() {
         if (lastError) {
           console.error('[Unscamable] Content script error:', lastError?.message || lastError?.toString() || 'Unknown error');
           hideLoading();
+          chrome.runtime.sendMessage({ action: 'setState', state: 'idle' });
           document.getElementById('riskLevel').textContent = 'Error';
           document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Refresh the page and try again</p></div>';
           return;
@@ -358,6 +359,7 @@ function runAnalysisIfEnabled() {
         if (!response) {
           console.error('[Unscamable] No response from content script');
           hideLoading();
+          chrome.runtime.sendMessage({ action: 'setState', state: 'idle' });
           document.getElementById('riskLevel').textContent = 'Error';
           document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Refresh the page and try again</p></div>';
           return;
@@ -378,6 +380,7 @@ function runAnalysisIfEnabled() {
             displayResult(result);
           } catch (error) {
             hideLoading();
+            chrome.runtime.sendMessage({ action: 'setState', state: 'idle' });
             document.getElementById('riskLevel').textContent = 'Error';
             document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Backend not running. Start Flask server on port 5000</p></div>';
             console.error('[Unscamable] Fetch error:', error?.message || String(error));

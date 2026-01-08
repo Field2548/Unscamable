@@ -5,6 +5,7 @@
   "description": "An AI-enhanced browser extension designed to analyze online transaction conversations, extract critical seller information, and generate real‑time risk assessments to help users identify and avoid potential fraud.",
   "permissions": ["activeTab", "tabs", "scripting", "storage"],
   "host_permissions": [
+    "<all_urls>",
     "http://localhost:5000/*",
     "*://messenger.com/*",
     "*://facebook.com/*",

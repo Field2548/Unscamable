@@ -3,8 +3,9 @@
   "name": "Unscamable AI",
   "version": "1.0",
   "description": "An AI-enhanced browser extension designed to analyze online transaction conversations, extract critical seller information, and generate real‑time risk assessments to help users identify and avoid potential fraud.",
-  "permissions": ["activeTab", "tabs", "scripting", "storage"],
+  "permissions": ["activeTab", "tabs", "scripting", "storage", "notifications"],
   "host_permissions": [
+    "<all_urls>",
     "http://localhost:5000/*",
     "*://messenger.com/*",
     "*://facebook.com/*",

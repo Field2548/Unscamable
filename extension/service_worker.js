@@ -203,10 +203,40 @@ async function showHighRiskPopup() {
   lastHighRiskPopupTs = now;
 
   try {
-    await chrome.action.openPopup();
-    console.log('[State Manager] High-risk popup opened');
+    // Try to open popup in the active tab
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs && tabs.length > 0) {
+      await chrome.action.openPopup();
+      console.log('[State Manager] High-risk popup opened');
+    } else {
+      console.warn('[State Manager] No active tab found for popup, using notification instead');
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon_48.png'),
+        title: '⚠️ High Risk Detected',
+        message: 'Potential scam detected! Click here to review.',
+        priority: 2,
+      });
+    }
   } catch (error) {
-    console.error('[State Manager] Error opening high-risk popup:', error);
+    console.warn('[State Manager] Error opening high-risk popup:', error.message);
+    // Fallback: use notification if popup fails
+    try {
+      if (chrome.notifications && chrome.notifications.create) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: chrome.runtime.getURL('icons/logo-final48.png'),
+          title: '⚠️ High Risk Detected',
+          message: 'Potential scam detected! Click here to review.',
+          priority: 2,
+        });
+        console.log('[State Manager] Used notification as fallback');
+      } else {
+        console.warn('[State Manager] Notifications API not available');
+      }
+    } catch (notifError) {
+      console.error('[State Manager] Error creating notification:', notifError);
+    }
   }
 }
 
@@ -224,6 +254,37 @@ function getCurrentState() {
  */
 function isScanning() {
   return currentState === 'scanning';
+}
+
+/**
+ * Best-effort screenshot capture with host/permission checks.
+ * Returns base64 data URL or empty string when not allowed.
+ */
+async function tryCaptureVisibleTab(tabId) {
+  if (!tabId) return '';
+
+  try {
+    const tab = await chrome.tabs.get(tabId);
+
+    // Only attempt capture on http/https pages we can actually access
+    if (!tab.url || !/^https?:/i.test(tab.url)) {
+      return '';
+    }
+
+    return await new Promise((resolve) => {
+      chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }, (dataUrl) => {
+        if (chrome.runtime.lastError) {
+          console.warn('[Auto-Scan] Screenshot capture skipped:', chrome.runtime.lastError.message);
+          resolve('');
+          return;
+        }
+        resolve(dataUrl || '');
+      });
+    });
+  } catch (e) {
+    console.warn('[Auto-Scan] Screenshot capture failed:', e?.message || e);
+    return '';
+  }
 }
 
 /**
@@ -246,20 +307,45 @@ initializeExtension();
  */
 async function openPopup() {
   try {
-    await chrome.action.openPopup();
-    console.log('[State Manager] Popup opened');
+    // Try to open popup in the active tab
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs && tabs.length > 0) {
+      await chrome.action.openPopup();
+      console.log('[State Manager] Popup opened successfully');
+    } else {
+      console.warn('[State Manager] No active tab found, cannot open popup');
+      return { success: false, reason: 'No active tab' };
+    }
   } catch (error) {
-    console.error('[State Manager] Error opening popup:', error);
+    console.warn('[State Manager] Error opening popup:', error.message);
+    // Don't throw - this can happen if service worker is in background
+    return { success: false, reason: error.message };
   }
+  return { success: true };
 }
 
 /**
  * Analyze new messages detected by content script (auto-analysis)
- * @param {string} text - The message text to analyze
+ * Supports both new extraction contract format and legacy text format
+ * @param {string|Array} textOrMessages - The message text or array of message objects
  * @param {number} tabId - The tab ID where the message was detected
  */
-async function analyzeNewMessages(text, tabId) {
+async function analyzeNewMessages(textOrMessages, tabId) {
   try {
+    // Handle both formats
+    let text = '';
+    let messages = [];
+    
+    if (Array.isArray(textOrMessages)) {
+      // New format: array of message objects
+      messages = textOrMessages;
+      text = messages.map(msg => msg.text || msg).join('\n\n');
+      console.log(`[Auto-Scan] Received ${messages.length} message(s) from extraction contract`);
+    } else {
+      // Legacy format: raw text
+      text = textOrMessages;
+    }
+
     // Skip if no content detected
     if (!text || text === 'No content detected.') {
       console.log('[Auto-Scan] No content to analyze, skipping');
@@ -285,10 +371,18 @@ async function analyzeNewMessages(text, tabId) {
         setTimeout(() => reject(new Error('Analysis timeout')), 10000)
       );
 
+      // Capture a visible tab screenshot (base64) for QR decoding
+      const imageDataUrl = await tryCaptureVisibleTab(tabId);
+
+      // Build request payload supporting both formats (include screenshot for QR decoding)
+      const payload = messages.length > 0 
+        ? { messages: messages, image: imageDataUrl }  // New format with metadata
+        : { text: text, image: imageDataUrl };         // Legacy format
+
       const fetchPromise = fetch(analyzeUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text, image: '' }),
+        body: JSON.stringify(payload),
       });
 
       const serverResponse = await Promise.race([fetchPromise, timeoutPromise]);
@@ -300,7 +394,7 @@ async function analyzeNewMessages(text, tabId) {
       const analysisResult = await serverResponse.json();
       const riskScore = analysisResult.risk_score || 0;
 
-      console.log('[Auto-Scan] New message analyzed. Risk score:', riskScore);
+      console.log('[Auto-Scan] Analysis complete. Risk score:', riskScore);
 
       // Update extension state based on risk score
       if (riskScore > 70) {
@@ -318,9 +412,6 @@ async function analyzeNewMessages(text, tabId) {
         console.log('[Auto-Scan] ✓ Page is safe. Score:', riskScore);
       }
 
-      // Keep the risk state persistent - it will update when new messages arrive
-      // Content script monitors for new messages and triggers auto-analysis automatically
-
     } catch (fetchError) {
       console.warn('[Auto-Scan] Backend unreachable or timeout:', fetchError.message);
       await setIdleState();
@@ -337,12 +428,16 @@ async function analyzeNewMessages(text, tabId) {
  * - { action: 'setState', state: 'idle' | 'scanning' | 'safe' | 'cautious' | 'warning' | 'highRisk' }
  * - { action: 'getState' }
  * - { action: 'openPopup' }
- * - { action: 'auto_analyze', text: '...' } (from content script)
+ * - { action: 'auto_analyze', text: '...' } (legacy format from content script)
+ * - { action: 'auto_analyze', messages: [...] } (new extraction contract format)
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'auto_analyze') {
     // Auto-analyze new messages detected by content script
-    analyzeNewMessages(request.text, sender.tab.id).then(() => {
+    // Supports both new message format and legacy text format
+    const input = request.messages || request.text;
+    
+    analyzeNewMessages(input, sender.tab?.id).then(() => {
       sendResponse({ success: true });
     }).catch((error) => {
       console.error('[Auto-Scan] Error:', error);
@@ -400,7 +495,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'openPopup') {
-    openPopup().then(() => sendResponse({ success: true }));
+    openPopup().then((result) => sendResponse(result)).catch(() => sendResponse({ success: false }));
+    return true; // Keep message channel open for async response
+  }
+
+  if (request.action === 'captureScreenshot') {
+    // Capture screenshot of the specified tab or active tab
+    (async () => {
+      try {
+        const tabId = request.tabId;
+        let screenshot = '';
+        
+        if (tabId) {
+          console.log('[Service Worker] Capturing screenshot for tab:', tabId);
+          screenshot = await tryCaptureVisibleTab(tabId);
+        } else {
+          console.log('[Service Worker] No tab ID provided, getting active tab');
+          const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tabs && tabs.length > 0) {
+            screenshot = await tryCaptureVisibleTab(tabs[0].id);
+          }
+        }
+        
+        console.log('[Service Worker] Screenshot result:', screenshot ? screenshot.length + ' bytes' : 'empty');
+        sendResponse({ screenshot: screenshot || '' });
+      } catch (error) {
+        console.error('[Service Worker] Screenshot capture error:', error);
+        sendResponse({ screenshot: '' });
+      }
+    })();
     return true; // Keep message channel open for async response
   }
 });
@@ -461,10 +584,13 @@ async function analyzeTabContent(tabId) {
 
         let analysisResult = { risk_score: 0 };
         try {
+          // Capture a visible tab screenshot for QR decoding
+          const imageDataUrl = await tryCaptureVisibleTab(tabId);
+
           const serverResponse = await fetch(analyzeUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: response.text, image: '' }),
+            body: JSON.stringify({ text: response.text, image: imageDataUrl }),
           });
 
           if (!serverResponse.ok) {

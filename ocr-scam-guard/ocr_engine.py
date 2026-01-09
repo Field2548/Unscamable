@@ -271,14 +271,36 @@ def extract_name(text_list):
     possible_names = []
     for line in text_list:
         clean_line = line.strip().lower()
+        # 1) Lines that begin with a person prefix (mr, mrs, นาย, นาง, น.ส., ...)
         for prefix in NAME_PREFIXES:
             if clean_line.startswith(prefix):
                 possible_names.append(clean_line)
                 break
+
+        # 2) Lines that contain account-name markers (Thai/English)
         if "ชื่อบัญชี" in clean_line or "account name" in clean_line:
-            name_part = line.replace("ชื่อบัญชี", "").replace("account name", "").strip()
+            # Remove marker phrases and any leading punctuation/colon
+            name_part = (
+                line.replace("ชื่อบัญชี", "")
+                    .replace("account name", "")
+                    .replace(":", " ")
+                    .strip()
+            )
             if len(name_part) > 2:
-                possible_names.append(clean_line.replace("ชื่อบัญชี", "").strip())
+                possible_names.append(name_part.lower())
+
+        # 3) Handle generic "Name:" pattern as found on QR slips
+        # Accept variations like "name:", "name -", etc.
+        if "name:" in clean_line or clean_line.startswith("name ") or clean_line.startswith("name-"):
+            # Extract substring after 'name' markers
+            try:
+                # Normalize colon/dash to a space for splitting
+                norm = clean_line.replace("name-", "name:").replace("name ", "name:")
+                after = norm.split("name:", 1)[1].strip()
+                if after:
+                    possible_names.append(after)
+            except Exception:
+                pass
     return list(set(possible_names))
 
 def clean_ocr_items(items):

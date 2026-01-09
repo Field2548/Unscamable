@@ -1,5 +1,9 @@
 from typing import List
-from risk_score_message import calculate_message_risk_score
+
+try:
+    from .risk_score_message import calculate_message_risk_score
+except ImportError:  # fallback when executed as a loose script
+    from risk_score_message import calculate_message_risk_score
 
 CONTINUATION_KEYWORDS = {
     "กรุณา", "โปรด", "ภายใน", "วันนี้", "ด่วน", "ทันที",
@@ -83,7 +87,7 @@ def group_chat_messages(messages: List[str]) -> List[str]:
             pending_urgency = False
             continue
 
-        _, curr_categories = calculate_message_risk_score(msg)
+        _, curr_categories, _ = calculate_message_risk_score(msg)
         curr_categories = set(curr_categories)
 
         # 🚨 URGENCY HEADER (buffer it)

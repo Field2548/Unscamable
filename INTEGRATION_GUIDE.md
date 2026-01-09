@@ -1,6 +1,6 @@
-# Extension ↔ OCR-Scam-Guard Integration Guide
+# Extension ↔ QR Decoder Integration Guide
 
-This document describes how the **extension** and **ocr-scam-guard** services are linked together.
+This document describes how the **extension** and **QR decoder** services are linked together.
 
 ## Architecture Overview
 
@@ -16,12 +16,12 @@ Browser Extension (Chrome)
         - /analyze endpoint
         - Handles text analysis
                 ↓
-        [Optionally calls OCR service]
+        [Optionally calls QR decoder]
                 ↓
-        OCR-Scam-Guard (Flask)
+        QR Decoder (Flask + OpenCV)
         - Port: 5001
-        - /scan endpoint
-        - Analyzes images
+        - /decode endpoint
+        - Decodes QR payloads and scores risk
 ```
 
 ## How They're Connected
@@ -33,11 +33,11 @@ Browser Extension (Chrome)
 - Extension backend analyzes for scam patterns
 - Results displayed in popup
 
-### 2. **Image Analysis Flow** (Optional)
+### 2. **Image/QR Analysis Flow** (Optional)
 - If an image is available (future implementation)
 - Extension can send base64 image data
-- Extension backend forwards to OCR service at `http://localhost:5001/scan`
-- OCR service analyzes image with PaddleOCR + scam detection
+- Extension backend forwards to QR decoder at `http://localhost:5001/decode`
+- QR decoder extracts QR payload(s), detects risky URLs/payment cues
 - Results combined and returned to extension
 
 ## Service URLs
@@ -45,28 +45,28 @@ Browser Extension (Chrome)
 | Service | URL | Port | Environment Variable |
 |---------|-----|------|----------------------|
 | Extension Backend | `http://localhost:5000` | 5000 | `FLASK_PORT` |
-| OCR Backend | `http://localhost:5001` | 5001 | `OCR_PORT` |
+| QR Decoder | `http://localhost:5001` | 5001 | `QR_DECODER_PORT` |
 
 ### Configuring Service URLs
 
 **Extension Backend** (`extension/app.py`):
 ```python
-OCR_SERVICE_URL = os.environ.get('OCR_SERVICE_URL', 'http://localhost:5001')
+QR_DECODER_URL = os.environ.get('QR_DECODER_URL', 'http://localhost:5001')
 ```
 
-Set custom OCR URL:
+Set custom QR decoder URL:
 ```bash
-export OCR_SERVICE_URL=http://your-ocr-server:5001
+export QR_DECODER_URL=http://your-qr-decoder:5001
 ```
 
-**OCR Service** (`ocr-scam-guard/server.py`):
+**QR Decoder Service** (`ocr-scam-guard/server.py`):
 ```python
-port = int(os.environ.get('OCR_PORT', 5001))
+port = int(os.environ.get('QR_DECODER_PORT', 5001))
 ```
 
 Set custom port:
 ```bash
-export OCR_PORT=5001
+export QR_DECODER_PORT=5001
 ```
 
 ## API Endpoints
@@ -92,9 +92,9 @@ Analyze text and optionally combined with image analysis.
   "color": "#FFA726",
   "flags": ["Suspicious terms found"],
   "entities_found": ["123-4-56789-0"],
-  "ocr_results": {
+  "qr_results": {
     "risk_score": 15,
-    "flags": ["Bank logo detected"]
+    "flags": ["QR code links to URL: https://bit.ly/..."]
   }
 }
 ```
@@ -104,10 +104,10 @@ Check if extension service is running.
 
 ---
 
-### OCR Backend
+### QR Decoder Backend
 
-#### `/scan` (POST)
-Analyze image for scams using OCR.
+#### `/decode` (POST)
+Decode QR codes from an image and score basic risk.
 
 **Request:**
 ```json
@@ -120,21 +120,21 @@ Analyze image for scams using OCR.
 ```json
 {
   "status": "success",
+  "status": "success",
+  "decoded_payloads": ["https://bit.ly/pay-now"],
   "risk_score": 25,
-  "flags": ["Transfer slip detected", "Bank account found"],
-  "extracted_text": "Banking information from image",
-  "bank_detected": "KBANK"
+  "flags": ["QR code links to URL: https://bit.ly/pay-now", "Shortened URL detected (bit.ly)"]
 }
 ```
 
 #### `/health` (GET)
-Check if OCR service is running.
+Check if QR decoder service is running.
 
 ---
 
 ## Setup Instructions
 
-### 1. Start OCR Service
+### 1. Start QR Decoder Service
 
 ```bash
 cd ocr-scam-guard
@@ -143,8 +143,7 @@ python server.py
 
 Expected output:
 ```
-✅ LOADED: UPDATED OCR ENGINE V6 (NO ARGS)
-🚀 OCR Server running on http://localhost:5001
+🚀 QR Decoder running on http://localhost:5001
 ```
 
 ### 2. Start Extension Backend
@@ -182,12 +181,12 @@ Expected output:
 - The extension can't reach the Flask backend
 - **Fix:** Run `python extension/app.py`
 
-### OCR Service Unreachable
-- Extension backend can't reach OCR service
+### QR Decoder Unreachable
+- Extension backend can't reach QR decoder
 - **Fix:** 
-  - Run OCR service: `python ocr-scam-guard/server.py`
+  - Run QR decoder: `python ocr-scam-guard/server.py`
   - Check port 5001 is available
-  - Verify `OCR_SERVICE_URL` environment variable
+  - Verify `QR_DECODER_URL` environment variable
 
 ### CORS Errors
 - Both services have `CORS()` enabled
@@ -211,7 +210,7 @@ Expected output:
 ### Batch Processing
 - Queue multiple images for analysis
 - Progress tracking
-- Detailed OCR results display
+- Detailed QR decoding results display
 
 ---
 
@@ -232,7 +231,7 @@ kill -9 <PID>
 Ensure all dependencies are installed:
 ```bash
 pip install -r extension/requirements.txt
-pip install -r ocr-scam-guard/requirements.txt
+pip install flask flask-cors opencv-python numpy
 ```
 
 ### Extension Not Communicating
@@ -244,19 +243,19 @@ pip install -r ocr-scam-guard/requirements.txt
 
 ## Architecture Decisions
 
-1. **Separate Services**: OCR and text analysis run on separate ports
+1. **Separate Services**: QR decoding and text analysis run on separate ports
    - Allows independent scaling
    - Can run on different machines
    - Easier debugging and maintenance
 
-2. **Request Forwarding**: Extension backend forwards OCR requests
+2. **Request Forwarding**: Extension backend forwards QR decoding requests
    - Single entry point for client
    - Easier to add authentication/logging
    - Can implement caching/rate limiting
 
-3. **Graceful Degradation**: If OCR service is down
+3. **Graceful Degradation**: If QR decoder is down
    - Extension still works with text analysis
-   - OCR errors are caught and logged
+  - QR decoding errors are caught and logged
    - User sees text-based results only
 
 ---

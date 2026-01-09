@@ -15,8 +15,8 @@
 | Bank Account Detection | ✅ PASS | Regex correctly identifies accounts |
 | OTP Detection | ✅ PASS | 6-digit OTP patterns detected |
 | Risk Scoring | ✅ PASS | Accurate risk assessment 0-100 |
-| Error Handling | ✅ PASS | Graceful degradation when OCR unavailable |
-| Image Support (Ready) | ✅ PASS | Code structure ready for OCR integration |
+| Error Handling | ✅ PASS | Graceful degradation when QR decoder unavailable |
+| Image Support (Ready) | ✅ PASS | Code structure ready for QR decoding |
 
 ---
 
@@ -49,8 +49,8 @@ Input:  {text: "Send money to my account now!", image: "base64..."}
 Output:
   - Risk Score: 0/100
   - Status: "Safe"
-  - OCR Results: null (service unavailable)
-Status: ✅ PASS - Extension still works without OCR service
+  - QR Results: null (service unavailable)
+Status: ✅ PASS - Extension still works without QR decoder
 ```
 
 ### Test 4: Thai Language Detection
@@ -71,10 +71,10 @@ Status: ✅ PASS - Thai language support working perfectly
 Python Version:     3.11.4
 Flask Version:      3.0.0
 Flask-CORS:         4.0.0
-Requests Library:   2.31.0 ✅ (NEW - for OCR communication)
+Requests Library:   2.31.0 ✅ (for QR decoder communication)
 
 Extension Backend:  http://localhost:5000 ✅ RUNNING
-OCR Service:        http://localhost:5001 ⏸️ NOT STARTED (Python 3.10 required)
+QR Decoder:         http://localhost:5001 ⏸️ NOT STARTED
 ```
 
 ---
@@ -94,17 +94,16 @@ OCR Service:        http://localhost:5001 ⏸️ NOT STARTED (Python 3.10 requir
    - Proper response formatting
 
 3. **Error Handling**
-   - Gracefully handles missing OCR service
+  - Gracefully handles missing QR decoder
    - No exceptions thrown
    - Returns valid responses in all scenarios
 
-### ⏳ PENDING (Requires Python 3.10)
+### ⏳ PENDING
 
-1. **OCR Service Integration**
-   - Code structure ready
-   - Image forwarding implemented
-   - Awaiting Python 3.10 environment
-   - Will automatically detect and process images
+1. **QR Decoder Integration**
+  - Code structure ready
+  - Image forwarding implemented
+  - Enable by running the QR decoder service
 
 ---
 
@@ -115,17 +114,16 @@ OCR Service:        http://localhost:5001 ⏸️ NOT STARTED (Python 3.10 requir
 2. ✅ NLP analysis fully functional
 3. ✅ Error handling implemented
 
-### To Enable OCR Features
-1. Install Python 3.10 (required by PaddleOCR)
-2. Run: `py -3.10 -m venv .venv`
-3. Activate: `.\.venv\Scripts\activate`
-4. Install: `pip install -r ocr-scam-guard/requirements.txt`
-5. Start OCR: `python ocr-scam-guard/server.py`
+### To Enable QR Decoding
+1. (Optional) Create a venv: `python -m venv .venv`
+2. Activate: `\.\.venv\Scripts\activate`
+3. Install: `pip install flask flask-cors opencv-python numpy`
+4. Start QR Decoder: `python ocr-scam-guard/server.py`
 
 Then extension will automatically:
 - Detect image requests
-- Forward images to OCR service (port 5001)
-- Combine text + image risk scores
+- Forward images to the QR decoder (port 5001)
+- Combine text + QR risk scores
 - Return comprehensive analysis
 
 ---
@@ -143,7 +141,7 @@ Response: {
   "color": "#4CAF50|#DECA30|#FFA726|#FF5252",
   "flags": ["detected patterns..."],
   "entities_found": ["accounts..."],
-  "ocr_results": null or {...}
+  "qr_results": null or {...}
 }
 ```
 
@@ -154,7 +152,7 @@ Response: {
 1. **Text Analysis**: Working perfectly with both English and Thai
 2. **Pattern Detection**: Bank accounts, OTP codes, and scam keywords all identified
 3. **Risk Scoring**: Accurate calibration (0=safe, 100=high risk)
-4. **Architecture**: Clean separation between extension and OCR service
+4. **Architecture**: Clean separation between extension and QR decoder
 5. **Robustness**: Handles missing dependencies gracefully
 6. **Performance**: Response time < 100ms for text analysis
 
@@ -166,7 +164,7 @@ Response: {
 
 - ✅ Extension backend fully operational
 - ✅ Text-based scam detection accurate
-- ✅ OCR integration code complete (awaiting Python 3.10)
+- ✅ QR decoding integration path complete
 - ✅ Error handling robust
 - ✅ API responses valid
 

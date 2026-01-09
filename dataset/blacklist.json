@@ -1,0 +1,59 @@
+{
+  "qr_codes": [
+    {
+      "type": "PromptPay",
+      "account_name": "MR. Kanade Areepoonsiri",
+      "account_number": "xxx-x-x9192-x",
+      "ref_id": "004999116153395",
+      "payment_system": "Thai QR Payment",
+      "report_count": 15,
+      "last_seen": "2026-01-09",
+      "notes": "Suspected fraudulent PromptPay account"
+    },
+    {
+      "type": "PromptPay",
+      "account_name": "สมชาย ใจดี",
+      "account_number": "xxx-x-x1234-x",
+      "payment_system": "Thai QR Payment",
+      "report_count": 12,
+      "last_seen": "2026-01-05",
+      "notes": "Multiple fraud reports"
+    },
+    {
+      "type": "Bank Transfer",
+      "account_name": "นางสาว มณี",
+      "account_number": "xxx-x-x5678-x",
+      "payment_system": "Thai QR Payment",
+      "report_count": 8,
+      "last_seen": "2026-01-02",
+      "notes": "Scam payment request"
+    },
+    {
+      "type": "PromptPay",
+      "account_name": "คุณวิไล",
+      "account_number": "xxx-x-x9012-x",
+      "payment_system": "Thai QR Payment",
+      "report_count": 5,
+      "last_seen": "2025-12-20",
+      "notes": "Fake authority impersonation"
+    },
+    {
+      "type": "PromptPay",
+      "account_name": "John Doe",
+      "account_number": "xxx-x-x3456-x",
+      "payment_system": "Thai QR Payment",
+      "report_count": 15,
+      "last_seen": "2026-01-06",
+      "notes": "International scam ring"
+    },
+    {
+      "type": "Bank Transfer",
+      "account_name": "เจ้าหน้าที่ธนาคาร",
+      "account_number": "xxx-x-x7890-x",
+      "payment_system": "Thai QR Payment",
+      "report_count": 10,
+      "last_seen": "2026-01-04",
+      "notes": "Impersonating bank official"
+    }
+  ]
+}

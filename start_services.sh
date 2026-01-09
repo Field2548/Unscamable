@@ -1,5 +1,5 @@
 #!/bin/bash
-# Startup script for Extension + OCR-Scam-Guard integration
+# Startup script for Extension + QR-decoder integration
 # This script starts both services in separate terminals on macOS/Linux
 
 echo "======================================"
@@ -23,13 +23,13 @@ fi
 echo "Starting services..."
 echo ""
 
-# Start OCR Service in background
-echo "[1/2] Starting OCR-Scam-Guard on port 5001..."
+# Start QR Decoder service in background
+echo "[1/2] Starting QR Decoder on port 5001..."
 cd ocr-scam-guard
 python server.py &
-OCR_PID=$!
+QR_PID=$!
 
-# Wait a moment for OCR service to start
+# Wait a moment for QR decoder to start
 sleep 2
 
 # Start Extension Backend in background
@@ -44,7 +44,7 @@ echo "Services are running..."
 echo "======================================"
 echo ""
 echo "Extension Backend: http://localhost:5000"
-echo "OCR Service:      http://localhost:5001"
+echo "QR Decoder:       http://localhost:5001"
 echo ""
 echo "Open Chrome and:"
 echo "1. Go to chrome://extensions/"
@@ -52,9 +52,9 @@ echo "2. Enable 'Developer mode'"
 echo "3. Click 'Load unpacked'"
 echo "4. Select the extension/ folder"
 echo ""
-echo "Services PIDs: Extension=$EXT_PID, OCR=$OCR_PID"
+echo "Services PIDs: Extension=$EXT_PID, QR=$QR_PID"
 echo ""
-echo "To stop services, run: kill $OCR_PID $EXT_PID"
+echo "To stop services, run: kill $QR_PID $EXT_PID"
 echo ""
 
 # Wait for both processes

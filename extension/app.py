@@ -5,8 +5,6 @@ import os
 import sys
 import requests
 import logging
-import json
-from datetime import datetime, timedelta
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -22,84 +20,10 @@ from NLP.risk_score_message import calculate_message_risk_score
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Chrome extension
 
-# OCR-Scam-Guard service URL (configurable via environment variable)
-OCR_SERVICE_URL = os.environ.get('OCR_SERVICE_URL', 'http://localhost:5001')
+# QR-decoder service URL (configurable via environment variable)
+QR_DECODER_URL = os.environ.get('QR_DECODER_URL', 'http://localhost:5001')
 
 BANK_REGEX = re.compile(r"\d{3}-\d{1}-\d{5}-\d{1}")
-
-def load_blacklist():
-    """Load blacklist data from JSON file"""
-    try:
-        blacklist_path = os.path.join(os.path.dirname(__file__), '..', 'dataset', 'blacklist.json')
-        with open(blacklist_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            return data.get('accounts', [])
-    except Exception as e:
-        logger.error(f"Failed to load blacklist: {e}")
-        return []
-
-def calculate_blacklist_score(account_name):
-    """
-    Calculate blacklist score based on report count and freshness
-    Formula: blacklist_score = base_score × freshness_modifier, cap at 40
-    """
-    if not account_name:
-        return 0, None
-    
-    blacklist = load_blacklist()
-    
-    # Check if account name matches any blacklist entry
-    matched_entry = None
-    account_name_lower = account_name.lower().strip()
-    
-    for entry in blacklist:
-        entry_name_lower = entry['name'].lower().strip()
-        if entry_name_lower == account_name_lower or account_name_lower in entry_name_lower or entry_name_lower in account_name_lower:
-            matched_entry = entry
-            break
-    
-    if not matched_entry:
-        return 0, None
-    
-    # Calculate base score from report count
-    report_count = matched_entry.get('report_count', 0)
-    if report_count >= 10:
-        base_score = 40
-    elif report_count >= 6:
-        base_score = 30
-    elif report_count >= 3:
-        base_score = 20
-    elif report_count >= 1:
-        base_score = 10
-    else:
-        base_score = 0
-    
-    # Calculate freshness modifier
-    last_seen = matched_entry.get('last_seen')
-    freshness_modifier = 1.0
-    
-    if last_seen:
-        try:
-            last_seen_date = datetime.strptime(last_seen, '%Y-%m-%d')
-            today = datetime.now()
-            days_ago = (today - last_seen_date).days
-            
-            if days_ago <= 7:
-                freshness_modifier = 1.2
-            elif days_ago <= 30:
-                freshness_modifier = 1.0
-            elif days_ago <= 90:
-                freshness_modifier = 0.8
-            else:
-                freshness_modifier = 0.5
-        except ValueError:
-            pass
-    
-    # Calculate final score
-    blacklist_score = int(base_score * freshness_modifier)
-    blacklist_score = min(40, blacklist_score)  # Cap at 40
-    
-    return blacklist_score, matched_entry
 
 def format_category_name(category: str) -> str:
     return CATEGORY_LABELS.get(category, category.replace("_", " ").title())
@@ -133,20 +57,11 @@ def run_nlp_pipeline(raw_text: str):
     extracted = extract_chat_messages(raw_text)
     grouped = group_chat_messages(extracted) if extracted else []
     analysis_units = grouped if grouped else extracted
-    
-    # Deduplicate: remove exact duplicate messages
-    seen = set()
-    deduplicated = []
-    for msg in analysis_units:
-        if msg not in seen:
-            deduplicated.append(msg)
-            seen.add(msg)
-    analysis_units = deduplicated
 
     print(f"[DEBUG NLP] Raw text length: {len(raw_text)}")
     print(f"[DEBUG NLP] Extracted messages: {len(extracted)}")
     print(f"[DEBUG NLP] Grouped messages: {len(grouped)}")
-    print(f"[DEBUG NLP] Analysis units: {len(analysis_units)} (after deduplication)")
+    print(f"[DEBUG NLP] Analysis units: {len(analysis_units)}")
     for i, unit in enumerate(analysis_units):
         from NLP.risk_score_message import calculate_message_risk_score
         score, cats = calculate_message_risk_score(unit)
@@ -167,85 +82,26 @@ def run_nlp_pipeline(raw_text: str):
 
 
 def build_flags(chat_report, message_summaries):
-    from NLP.scam_keywords import CATEGORIES
-    
-    # Map internal category names to display names that match popup.js
-    CATEGORY_DISPLAY_NAMES = {
-        "urgency": "Urgency",
-        "identity_threat": "Identity Threat",
-        "financial_pressure": "Financial Pressure",
-        "authority": "Authority",
-        "delivery": "Delivery Scams",
-        "promotion": "Promotional Bait",
-        "link": "Link Requests"
-    }
-    
     flags = []
 
-    # Build helper maps
-    keyword_to_category = {}
-    category_to_keywords = {}
-    for category, data in CATEGORIES.items():
-        kws = [kw.lower() for kw in data.get("keywords", [])]
-        category_to_keywords[category] = kws
-        for keyword in kws:
-            keyword_to_category[keyword] = category
-
-    # Extract matched keywords from message summaries
-    matched_keywords_by_category = {}
-    
-    # Pass 1: collect per-message detected categories
-    for summary in message_summaries:
-        detected_cats = summary.get("categories") or []
-        if not detected_cats:
-            continue
-
-        text = summary["text"].lower()
-
-        # Use only the categories detected for this message to avoid overmatching
-        for display_cat in detected_cats:
-            # Reverse-map display name back to internal key
-            internal_cat = None
-            for k, v in CATEGORY_DISPLAY_NAMES.items():
-                if v == display_cat:
-                    internal_cat = k
-                    break
-            if not internal_cat:
-                continue
-
-            for keyword in category_to_keywords.get(internal_cat, []):
-                if keyword in text:
-                    if internal_cat not in matched_keywords_by_category:
-                        matched_keywords_by_category[internal_cat] = set()
-                    matched_keywords_by_category[internal_cat].add(keyword)
-
-    # Pass 2: ensure we gather all keywords for categories detected in the chat
-    detected_cats_overall = chat_report.get("detected_categories") or {}
-    # Reverse map display label -> internal key
-    DISPLAY_TO_INTERNAL = {v: k for k, v in CATEGORY_DISPLAY_NAMES.items()}
-    for display_cat in detected_cats_overall.keys():
-        internal_cat = DISPLAY_TO_INTERNAL.get(display_cat, display_cat)
-        texts_joined = "\n".join(ms["text"].lower() for ms in message_summaries if ms.get("text"))
-        for keyword in category_to_keywords.get(internal_cat, []):
-            if keyword in texts_joined:
-                if internal_cat not in matched_keywords_by_category:
-                    matched_keywords_by_category[internal_cat] = set()
-                matched_keywords_by_category[internal_cat].add(keyword)
-    
-    # Add matched keywords as flags grouped by category with display names
-    for category, keywords in matched_keywords_by_category.items():
-        display_name = CATEGORY_DISPLAY_NAMES.get(category, category)
-        sorted_keywords = sorted(keywords)
-        joined = ", ".join(sorted_keywords)
-        flags.append(f"{display_name} → \"{joined}\"")
+    # Add category-level summaries
+    for label, count in (chat_report.get("detected_categories") or {}).items():
+        flags.append(f"{label}: detected in {count} message(s)")
 
     # Add reason if exists
     reason = chat_report.get("reason")
     if reason:
         flags.append(reason.capitalize())
 
-    if not flags:
-        flags = ["No suspicious factors detected"]
+    # Show all message summaries (including those with score 0 or more)
+    # This ensures we capture all instances of detected factors
+    for summary in message_summaries:
+        if summary.get("categories"):  # Only show if there are categories
+            categories = ", ".join(summary["categories"])
+            snippet = summary["text"].strip()
+            if len(snippet) > 120:
+                snippet = snippet[:117] + "..."
+            flags.append(f"{categories} → \"{snippet}\"")
 
     print(f"[DEBUG] Detected categories: {chat_report.get('detected_categories')}")
     print(f"[DEBUG] Total flags: {len(flags)}")
@@ -265,49 +121,34 @@ def get_status(score):
     else:
         return {"status": "Safe", "color": "#4CAF50"}
 
-def analyze_image_with_ocr(base64_image):
+def decode_image_with_qr_service(base64_image):
     """
-    Send image to OCR-Scam-Guard service for analysis.
-    Returns OCR analysis results or None if service is unavailable.
+    Send image to QR-decoder service for analysis.
+    Returns QR decoding results or None if service is unavailable.
     """
     try:
-        ocr_payload = {
-            "image": base64_image
-        }
+        qr_payload = {"image": base64_image}
         
         response = requests.post(
-            f"{OCR_SERVICE_URL}/scan",
-            json=ocr_payload,
+            f"{QR_DECODER_URL}/decode",
+            json=qr_payload,
             timeout=10
         )
         
         if response.status_code == 200:
-            ocr_result = response.json()
-            
-            # Check for account names in OCR results
-            detected_name = ocr_result.get('account_name', '')
-            blacklist_score = 0
-            blacklist_info = None
-            
-            if detected_name:
-                blacklist_score, blacklist_info = calculate_blacklist_score(detected_name)
-                if blacklist_score > 0:
-                    ocr_result['blacklist_score'] = blacklist_score
-                    ocr_result['blacklist_info'] = blacklist_info
-                    logger.info(f"Blacklist match found: {detected_name} - Score: {blacklist_score}")
-            
-            return ocr_result
+            logger.info("[QR] decode success from QR decoder service")
+            return response.json()
         else:
-            print(f"⚠️ OCR service returned status {response.status_code}")
+            logger.warning(f"⚠️ QR decoder service returned status {response.status_code}")
             return None
     except requests.exceptions.ConnectionError:
-        print(f"⚠️ OCR service unreachable at {OCR_SERVICE_URL}")
+        logger.warning(f"⚠️ QR decoder service unreachable at {QR_DECODER_URL}")
         return None
     except requests.exceptions.Timeout:
-        print("⚠️ OCR service request timed out")
+        logger.warning("⚠️ QR decoder service request timed out")
         return None
     except Exception as e:
-        print(f"⚠️ OCR integration error: {str(e)}")
+        logger.exception(f"⚠️ QR decoding integration error")
         return None
 
 
@@ -371,37 +212,47 @@ def analyze():
     risk_score = min(100, risk_score + bank_bonus)
     status_info = get_status(risk_score)
     
-    # If image is provided, send to OCR service for analysis
-    ocr_results = None
-    blacklist_score = 0
-    if image_data:
-        ocr_results = analyze_image_with_ocr(image_data)
-        if ocr_results:
-            ocr_risk = ocr_results.get('risk_score', 0)
-            blacklist_score = ocr_results.get('blacklist_score', 0)
-            
-            # Combine text, OCR, and blacklist scores
-            combined_score = min(100, risk_score + ocr_risk + blacklist_score)
+    # If image is provided, send to QR decoder service for analysis
+    qr_results = None
+    image_data = data.get('image', '') or ''  # Ensure empty string, not None
+    if image_data and image_data.strip():  # Only check if image data is not empty
+        logger.info(f"[QR] Image detected in request ({len(image_data)} bytes); sending to QR decoder")
+        qr_results = decode_image_with_qr_service(image_data)
+        logger.info(f"[QR] Decoder response: {qr_results}")
+        if qr_results and qr_results.get('risk_score', 0) > 0:
+            qr_score = qr_results.get('risk_score', 0)
+            qr_flags = qr_results.get('flags', [])
+            logger.info(f"[QR] QR risk score: {qr_score}, Text risk score: {risk_score}, QR flags: {qr_flags}")
+            # Combine text and QR decoding risk scores
+            combined_score = min(100, risk_score + qr_score)
+            logger.info(f"[QR] Combined score: {combined_score}")
             status_info = get_status(combined_score)
-            
-            if ocr_results.get('flags'):
-                flags.extend(ocr_results['flags'])
-            
-            # Add blacklist flag if detected
-            if blacklist_score > 0 and ocr_results.get('blacklist_info'):
-                info = ocr_results['blacklist_info']
-                flags.append(f"⚠️ Blacklisted Account: {info['name']} ({info['report_count']} reports)")
-            
+            # Add QR flags to main flags list
+            if qr_flags:
+                flags.extend(qr_flags)
+                logger.info(f"[QR] Added {len(qr_flags)} QR flags to response")
             risk_score = combined_score
+        elif qr_results:
+            # QR was decoded but risk_score is 0; still attach flags if any
+            logger.info(f"[QR] QR decoded but risk score is 0")
+            qr_flags = qr_results.get('flags', [])
+            if qr_flags:
+                flags.extend(qr_flags)
+                logger.info(f"[QR] Added {len(qr_flags)} QR flags (no score increase)")
+            logger.info("[QR] QR decoded but no risk increment applied")
+    else:
+        logger.info("[QR] No image data in request (screenshot capture may have failed)")
     
+    # Only set default "no factors" message if there are truly no flags
     if not flags:
         flags = ["No suspicious factors detected"]
+    else:
+        logger.info(f"[Analysis] Total flags before response: {len(flags)}: {flags}")
 
     analysis_detail = {
         **nlp_results,
         "text_risk_score": chat_report["chat_risk_score"],
         "bank_bonus": bank_bonus,
-        "blacklist_score": blacklist_score,
         "message_count": len(messages) if messages else 1
     }
 
@@ -411,7 +262,7 @@ def analyze():
         "color": status_info["color"],
         "flags": flags,
         "entities_found": bank_accounts,
-        "ocr_results": ocr_results,
+        "qr_results": qr_results,
         "analysis": analysis_detail
     })
 

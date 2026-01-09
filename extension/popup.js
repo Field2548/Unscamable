@@ -58,6 +58,13 @@ function displayResult(result) {
   // Stop loading animation first
   hideLoading();
   
+  // Log QR detection
+  if (result.qr_results && result.qr_results.decoded_payloads && result.qr_results.decoded_payloads.length > 0) {
+    console.log('🔍 QR Codes Detected:', result.qr_results.decoded_payloads);
+    console.log('🎯 QR Risk Score:', result.qr_results.risk_score);
+    console.log('🚩 QR Flags:', result.qr_results.flags);
+  }
+  
   const riskScore = result.risk_score || 0;
   const riskLevel = result.status || getRiskLevel(riskScore);
   const riskColor = result.color || getRiskColor(riskScore);
@@ -92,38 +99,36 @@ function displayResult(result) {
   const categoriesContainer = document.getElementById('categoriesContainer');
   categoriesContainer.innerHTML = '';
 
+  // Check for QR-specific results and display them first
+  if (result.qr_results && result.qr_results.decoded_payloads && result.qr_results.decoded_payloads.length > 0) {
+    console.log('[Unscamable] Displaying QR results');
+    const qrDiv = document.createElement('div');
+    qrDiv.className = 'category-item';
+    
+    const qrName = document.createElement('p');
+    qrName.className = 'category-name';
+    qrName.textContent = 'Blacklist Detected';
+    qrDiv.appendChild(qrName);
+    
+    const qrCountDiv = document.createElement('div');
+    qrCountDiv.className = 'message-count';
+    qrCountDiv.textContent = `Detected in 1 QR code(s)`;
+    qrDiv.appendChild(qrCountDiv);
+    
+    categoriesContainer.appendChild(qrDiv);
+  }
+
   // Build categories map focused on the snippets tied to each category
   const categoriesMap = {};
-  // Category keywords and their weights from NLP module (scam_keywords.py)
   const CATEGORY_KEYWORDS = {
-    "Authority" : ["ตำรวจ", "เจ้าหน้าที่", "กรม", "กระทรวง", "ฝ่ายความปลอดภัย", "ศาล", "หมายศาล", "คดีความ", "ปปง.", "สิทธิ์รัฐ", "ธนาคาร", "ศูนย์บริการ", "ฝ่ายกฎหมาย", "ฝ่าย กฎหมาย"],
-    "Financial Pressure": ["ยอดค้างชำระ", "ค้างชำระ", "ค่าปรับ", "ค่าธรรมเนียม", "หนี้ค้าง", "ชำระเงิน", "โอนเงิน", "จ่ายบิล", "โอนเงินผิดปกติ", "คืนเงิน", "โอนเงินคืน", "ใบสั่งออนไลน์", "ชำระค่าปรับ", "วงเงินเหลือ", "ค่าไฟฟ้า", "ค่าปรับจราจร"],
+    Authority: ["ตำรวจ", "เจ้าหน้าที่", "กรม", "กระทรวง", "ฝ่ายความปลอดภัย", "ศาล", "หมายศาล", "คดีความ", "ปปง.", "สิทธิ์รัฐ", "ธนาคาร", "ศูนย์บริการ", "ฝ่ายกฎหมาย"],
+    "Financial Pressure": ["ยอดค้างชำระ", "ค้างชำระ", "ค่าปรับ", "ค่าธรรมเนียม", "หนี้ค้าง", "ชำระเงิน", "โอนเงิน", "จ่ายบิล", "โอนเงินผิดปกติ", "คืนเงิน", "โอนเงินคืน", "ชำระค่าปรับ", "ค่าไฟฟ้า"],
     "OTP Request": ["รหัส OTP", "OTP"],
-    "Promotional Bait": ["ได้รับรางวัล", "iPhone", "โปรโมชั่น", "โปรเด็ด", "โปรพิเศษ", "ฝาก100รับ200", "เงินคืน", "กำไรการันตี", "ลงทุนน้อย", "งานพาร์ทไทม์", "รายได้ดี", "รับของรางวัล", "แบบสอบถาม", "ฟรี", "ระบบออโต้", "ไม่มีขั้นต่ำ"],
-    "Link Requests": ["คลิกลิงก์", "กดลิงก์", "ตรวจสอบที่", "ตรวจสอบเลย", "ติดต่อด่วน", "ติดต่อเจ้าหน้าที่", "แอดไลน์", "คลิกยืนยัน", "เพื่อตรวจสอบ"],
-    "Delivery Scams": ["พัสดุ", "ขนส่ง", "จัดส่ง", "เลขแทรกกิ้ง", "ติดต่อผู้รับไม่ได้", "ยืนยันการจัดส่ง", "ไม่สามารถจัดส่ง", "เช็กสถานะ"],
-    "Urgency": ["ด่วน", "เร่งด่วน", "ภายใน 24 ชั่วโมง", "ทันที", "วันนี้เท่านั้น", "หมดอายุวันนี้", "ครั้งสุดท้าย", "สุดท้าย", "จะถูกระงับ", "ถูกระงับ", "ระงับบัญชี", "ระงับบริการ", "ถูกปิดใช้งาน", "ลงทะเบียนด่วน"],
-    "Identity Threat": ["บัญชีของคุณ", "บัญชีของท่าน", "ยืนยันตัวตน", "ตรวจสอบตัวตน", "รหัส OTP", "ยืนยันความปลอดภัย", "ระบบตรวจพบ", "การเข้าถึงผิดปกติ", "บัญชีถูกแฮก", "ระงับบัญชีชั่วคราว"]
-  };
-  
-  // Category weights from NLP scam_keywords.py - determines risk impact
-  const CATEGORY_WEIGHTS = {
-    "Promotional Bait": 30,      // Highest - most deceptive
-    "Identity Threat": 25,        // Very high - directly exploits account access
-    "Authority": 20,              // High - impersonation risk
-    "Financial Pressure": 20,     // High - financial loss risk
-    "Delivery Scams": 20,         // High - delivery fraud risk
-    "Link Requests": 15,          // Medium - clicking risk
-    "OTP Request": 25,            // Very high - account compromise
-    "Urgency": 10                 // Lower weight but common tactic
-  };
-  
-  // Regex pattern weights from NLP _regex.py - additional risk signals
-  const REGEX_WEIGHTS = {
-    "Suspicious URL": 20,          // URL regex weight
-    "Money Mentions": 10,          // Money regex weight  
-    "Time Pressure": 10,           // Time pressure regex weight
-    "OTP Request": 25              // OTP regex weight
+    "Promotional Bait": ["ได้รับรางวัล", "โปรโมชั่น", "โปรพิเศษ", "เงินคืน", "กำไรการันตี"],
+    "Link Requests": ["คลิกลิงก์", "กดลิงก์", "ตรวจสอบที่", "ตรวจสอบเลย", "คลิกยืนยัน", "แอดไลน์"],
+    "Delivery Scams": ["พัสดุ", "ขนส่ง", "จัดส่ง", "เลขแทรกกิ้ง", "ยืนยันการจัดส่ง", "ไม่สามารถจัดส่ง"],
+    Urgency: ["ด่วน", "เร่งด่วน", "ทันที", "วันนี้เท่านั้น", "ครั้งสุดท้าย", "จะถูกระงับ", "ระงับบริการ"],
+    "Identity Threat": ["บัญชีของคุณ", "บัญชีของท่าน", "ยืนยันตัวตน", "ตรวจสอบตัวตน", "ยืนยันความปลอดภัย", "ระบบตรวจพบ", "บัญชีถูกแฮก", "ระงับบัญชีชั่วคราว"]
   };
 
   const focusSnippet = (cat, text) => {
@@ -132,25 +137,6 @@ function displayResult(result) {
     const hit = keywords.find((kw) => text.includes(kw));
     return hit || text;
   };
-  
-  // Get weight indicator for category - shows visual importance based on NLP weights
-  const getWeightIndicator = (category) => {
-    // Check in category weights first
-    let weight = CATEGORY_WEIGHTS[category];
-    
-    // If not found, check in regex weights
-    if (weight === undefined) {
-      weight = REGEX_WEIGHTS[category] || 0;
-    }
-    
-    if (weight >= 30) return "🔴"; // Critical (Promotional Bait)
-    if (weight >= 25) return "🔴"; // Very High (Identity Threat, OTP)
-    if (weight >= 20) return "🟠"; // High (Authority, Financial, Delivery, URL)
-    if (weight >= 15) return "🟡"; // Medium (Link Requests)
-    if (weight >= 10) return "🟡"; // Medium-Low (Money, Time Pressure)
-    return "🟢"; // Lower
-  };
-  
   const shouldSkipSnippet = (text) => {
     if (!text) return true;
     const trimmed = text.trim();
@@ -165,26 +151,23 @@ function displayResult(result) {
       if (flag.includes(' → ')) {
         const parts = flag.split(' → ');
         const categoryPart = parts[0];
-        let snippet = parts[1] || '';
-        // Remove quotes from snippet if present
-        snippet = snippet.replace(/^"|"$/g, '');
+        const snippet = parts[1] || '';
         const categories = categoryPart.split(',').map((c) => c.trim()).filter(Boolean);
         categories.forEach((cat) => {
-          const normalizedCat = cat === 'Time Pressure' ? 'Urgency' : cat;
-          if (!categoriesMap[normalizedCat]) {
-            categoriesMap[normalizedCat] = { name: normalizedCat, messages: [], messageSet: new Set(), count: 0 };
+          if (!categoriesMap[cat]) {
+            categoriesMap[cat] = { name: cat, messages: [], messageSet: new Set(), count: 0 };
           }
-          const focused = snippet.includes(',') ? snippet : focusSnippet(normalizedCat, snippet);
-          if (!shouldSkipSnippet(focused) && !categoriesMap[normalizedCat].messageSet.has(focused)) {
-            categoriesMap[normalizedCat].messageSet.add(focused);
-            categoriesMap[normalizedCat].messages.push(focused);
+          const focused = focusSnippet(cat, snippet);
+          if (!shouldSkipSnippet(focused) && !categoriesMap[cat].messageSet.has(focused)) {
+            categoriesMap[cat].messageSet.add(focused);
+            categoriesMap[cat].messages.push(focused);
           }
-          categoriesMap[normalizedCat].count += 1;
+          categoriesMap[cat].count += 1;
         });
       } else if (flag.includes(': detected in')) {
         const match = flag.match(/^(.+?):\s+detected in (\d+) message\(s\)$/);
         if (match) {
-          const cat = match[1] === 'Time Pressure' ? 'Urgency' : match[1];
+          const cat = match[1];
           const cnt = parseInt(match[2], 10);
           if (!categoriesMap[cat]) {
             categoriesMap[cat] = { name: cat, messages: [], messageSet: new Set(), count: 0 };
@@ -201,36 +184,22 @@ function displayResult(result) {
     messageSummaries.forEach((summary) => {
       const text = summary.text || '';
       (summary.categories || []).forEach((cat) => {
-        const normalizedCat = cat === 'Time Pressure' ? 'Urgency' : cat;
         if (!categoriesMap[cat]) {
-          categoriesMap[normalizedCat] = { name: normalizedCat, messages: [], messageSet: new Set(), count: 0 };
+          categoriesMap[cat] = { name: cat, messages: [], messageSet: new Set(), count: 0 };
         }
-        const focused = focusSnippet(normalizedCat, text);
-        if (!shouldSkipSnippet(focused) && !categoriesMap[normalizedCat].messageSet.has(focused)) {
-          categoriesMap[normalizedCat].messageSet.add(focused);
-          categoriesMap[normalizedCat].messages.push(focused);
+        const focused = focusSnippet(cat, text);
+        if (!shouldSkipSnippet(focused) && !categoriesMap[cat].messageSet.has(focused)) {
+          categoriesMap[cat].messageSet.add(focused);
+          categoriesMap[cat].messages.push(focused);
         }
-        categoriesMap[normalizedCat].count += 1;
+        categoriesMap[cat].count += 1;
       });
     });
   }
 
   const categoryKeys = Object.keys(categoriesMap);
-  
-  // Check for blacklist information from OCR
-  let blacklistDetected = false;
-  if (result.ocr_results && result.ocr_results.blacklist_score > 0) {
-    blacklistDetected = true;
-    const blacklistInfo = result.ocr_results.blacklist_info;
-    categoriesMap['Blacklist'] = {
-      name: 'Blacklisted Account',
-      messages: [`${blacklistInfo.name} (${blacklistInfo.report_count} reports)`],
-      messageSet: new Set([`${blacklistInfo.name} (${blacklistInfo.report_count} reports)`]),
-      count: 1
-    };
-  }
 
-  if (categoryKeys.length === 0 && !blacklistDetected) {
+  if (categoryKeys.length === 0) {
     const noneDiv = document.createElement('div');
     noneDiv.className = 'category-item';
     const p = document.createElement('p');
@@ -239,9 +208,7 @@ function displayResult(result) {
     noneDiv.appendChild(p);
     categoriesContainer.appendChild(noneDiv);
   } else {
-    // Re-get category keys after potentially adding blacklist
-    const allCategoryKeys = Object.keys(categoriesMap);
-    allCategoryKeys.forEach((key) => {
+    categoryKeys.forEach((key) => {
       const categoryData = categoriesMap[key];
       const categoryDiv = document.createElement('div');
       categoryDiv.className = 'category-item';
@@ -272,11 +239,37 @@ function displayResult(result) {
         categoryDiv.appendChild(messagesList);
       }
 
+      const countDiv = document.createElement('div');
+      countDiv.className = 'message-count';
+      countDiv.textContent = categoryData.count > 0
+        ? `Detected in ${categoryData.count} message(s)`
+        : 'Detected';
+      categoryDiv.appendChild(countDiv);
+
       categoriesContainer.appendChild(categoryDiv);
     });
   }
-  
-  // Remove old blacklist display code (replaced by categoriesMap integration above)
+
+  if (result.entities_found && result.entities_found.length > 0) {
+    const blacklistDiv = document.createElement('div');
+    blacklistDiv.className = 'category-item';
+    const categoryName = document.createElement('p');
+    categoryName.className = 'category-name';
+    categoryName.textContent = 'Blacklisted Account';
+    blacklistDiv.appendChild(categoryName);
+    
+    const messagesList = document.createElement('ul');
+    messagesList.className = 'messages-list';
+    
+    result.entities_found.forEach(entity => {
+      const li = document.createElement('li');
+      li.textContent = entity;
+      messagesList.appendChild(li);
+    });
+    
+    blacklistDiv.appendChild(messagesList);
+    categoriesContainer.appendChild(blacklistDiv);
+  }
 }
 
 // Auto-open popup for high risk
@@ -350,7 +343,6 @@ function runAnalysisIfEnabled() {
         if (lastError) {
           console.error('[Unscamable] Content script error:', lastError?.message || lastError?.toString() || 'Unknown error');
           hideLoading();
-          chrome.runtime.sendMessage({ action: 'setState', state: 'idle' });
           document.getElementById('riskLevel').textContent = 'Error';
           document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Refresh the page and try again</p></div>';
           return;
@@ -359,7 +351,6 @@ function runAnalysisIfEnabled() {
         if (!response) {
           console.error('[Unscamable] No response from content script');
           hideLoading();
-          chrome.runtime.sendMessage({ action: 'setState', state: 'idle' });
           document.getElementById('riskLevel').textContent = 'Error';
           document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Refresh the page and try again</p></div>';
           return;
@@ -368,19 +359,44 @@ function runAnalysisIfEnabled() {
         // Proceed with async analysis
         (async () => {
           try {
+            console.log('[Unscamable] Requesting screenshot from service worker with tab ID:', tab.id);
+            
+            // Ask service worker to capture screenshot with specific tab ID
+            let screenshotData = '';
+            try {
+              screenshotData = await new Promise((resolve, reject) => {
+                chrome.runtime.sendMessage({ action: 'captureScreenshot', tabId: tab.id }, (response) => {
+                  if (chrome.runtime.lastError) {
+                    console.warn('[Unscamable] Screenshot request error:', chrome.runtime.lastError.message);
+                    reject(chrome.runtime.lastError);
+                  } else if (response && response.screenshot) {
+                    console.log('[Unscamable] Screenshot received:', response.screenshot.length, 'bytes');
+                    resolve(response.screenshot);
+                  } else {
+                    console.warn('[Unscamable] No screenshot in response');
+                    resolve('');
+                  }
+                });
+              });
+            } catch (captureError) {
+              console.warn('[Unscamable] Failed to get screenshot from service worker:', captureError?.message || captureError);
+              screenshotData = '';
+            }
+
+            console.log('[Unscamable] Sending analysis request with image:', screenshotData ? screenshotData.length + ' bytes' : 'empty');
             const serverResponse = await fetch('http://localhost:5000/analyze', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: response.text, image: '' })
+              body: JSON.stringify({ text: response.text, image: screenshotData })
             });
 
             const result = await serverResponse.json();
+            console.log('[Unscamable] Backend response:', result);
             
             // Hide loading animation and display results
             displayResult(result);
           } catch (error) {
             hideLoading();
-            chrome.runtime.sendMessage({ action: 'setState', state: 'idle' });
             document.getElementById('riskLevel').textContent = 'Error';
             document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Backend not running. Start Flask server on port 5000</p></div>';
             console.error('[Unscamable] Fetch error:', error?.message || String(error));
@@ -423,5 +439,3 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   return true;
 });
-
-// Scan image UI removed: popup uses auto-analysis only

@@ -1,5 +1,5 @@
 @echo off
-REM Startup script for Extension + OCR-Scam-Guard integration
+REM Startup script for Extension + QR-decoder integration
 REM This script starts both services in separate terminals on Windows
 
 echo ======================================
@@ -23,11 +23,11 @@ if not exist "ocr-scam-guard" (
 echo Starting services...
 echo.
 
-REM Start OCR Service in new window
-echo [1/2] Starting OCR-Scam-Guard on port 5001...
-start "OCR-Scam-Guard" cmd /k "cd ocr-scam-guard && python server.py"
+REM Start QR Decoder service in new window
+echo [1/2] Starting QR Decoder on port 5001...
+start "QR-Decoder" cmd /k "cd ocr-scam-guard && python server.py"
 
-REM Wait a moment for OCR service to start
+REM Wait a moment for QR decoder to start
 timeout /t 2 /nobreak
 
 REM Start Extension Backend in new window
@@ -40,7 +40,7 @@ echo Services are starting...
 echo ======================================
 echo.
 echo Extension Backend: http://localhost:5000
-echo OCR Service:      http://localhost:5001
+echo QR Decoder:       http://localhost:5001
 echo.
 echo Open Chrome and:
 echo 1. Go to chrome://extensions/

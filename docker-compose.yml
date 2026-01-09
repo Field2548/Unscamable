@@ -10,14 +10,14 @@ services:
     environment:
       - FLASK_ENV=production
       - FLASK_DEBUG=False
-      - OCR_SERVICE_URL=http://ocr-service:5001
+      - QR_DECODER_URL=http://qr-decoder:5001
     depends_on:
-      - ocr-service
+      - qr-decoder
     volumes:
       - ./NLP:/app/../NLP:ro
     container_name: unscamable-extension
 
-  ocr-service:
+  qr-decoder:
     build:
       context: ./ocr-scam-guard
       dockerfile: Dockerfile
@@ -26,8 +26,8 @@ services:
     environment:
       - FLASK_ENV=production
       - FLASK_DEBUG=False
-      - OCR_PORT=5001
-    container_name: unscamable-ocr
+      - QR_DECODER_PORT=5001
+    container_name: unscamable-qr-decoder
 
 networks:
   default:

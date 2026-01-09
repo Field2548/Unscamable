@@ -1,39 +1,38 @@
-# Extension ↔ OCR-Scam-Guard Linking Summary
+# Extension ↔ QR Decoder Linking Summary
 
 ## What Was Implemented
 
-I've successfully linked the **extension** and **ocr-scam-guard** services together. Here's what changed:
+I've successfully linked the **extension** and **QR decoder** services together. Here's what changed:
 
 ---
 
 ## 🔗 Code Changes
 
 ### 1. **Extension Backend** (`extension/app.py`)
-**Added:**
-- ✅ Import `requests` and `json` for service communication
-- ✅ `OCR_SERVICE_URL` configuration (defaults to `http://localhost:5001`)
-- ✅ `analyze_image_with_ocr()` function to forward image data to OCR service
+**Added/Updated:**
+- ✅ `QR_DECODER_URL` configuration (defaults to `http://localhost:5001`)
+- ✅ `decode_image_with_qr_service()` to forward image data to the QR decoder
 - ✅ Enhanced `/analyze` endpoint to:
   - Accept optional `image` parameter
-  - Forward image to OCR service if provided
-  - Combine text + image risk scores
-  - Merge OCR flags with text analysis flags
+  - Forward image to QR decoder if provided
+  - Combine text + QR risk scores
+  - Merge QR flags with text analysis flags
 
 **Benefits:**
-- Extension can now analyze both text AND images
-- Graceful fallback if OCR service is down
-- Configurable OCR service URL via environment variables
+- Extension can now analyze both text AND QR payloads
+- Graceful fallback if QR decoder is down
+- Configurable QR decoder URL via environment variables
 
-### 2. **OCR Service** (`ocr-scam-guard/server.py`)
-**Added:**
+### 2. **QR Decoder Service** (`ocr-scam-guard/server.py`)
+**Added/Updated:**
+- ✅ `/decode` endpoint to extract QR payloads and score risk
 - ✅ `/health` endpoint for service availability checks
-- ✅ Configurable port via `OCR_PORT` environment variable (defaults to 5001)
-- ✅ Changed port from 5000 to 5001 (to avoid conflict with extension backend)
+- ✅ Configurable port via `QR_DECODER_PORT` environment variable (defaults to 5001)
 - ✅ CORS enabled for cross-service communication
 
 **Benefits:**
-- Clear separation of services (extension on 5000, OCR on 5001)
-- Extension can verify OCR service is running before sending requests
+- Clear separation of services (extension on 5000, QR decoder on 5001)
+- Extension can verify QR decoder is running before sending requests
 - Production-ready configuration
 
 ---
@@ -72,16 +71,16 @@ I've successfully linked the **extension** and **ocr-scam-guard** services toget
          ┌────────────────────────────┐
          │ Extension Backend (5000)   │
          │ • Analyzes text            │
-         │ • Calls OCR if image given │
+         │ • Calls QR decoder if image given │
          │ • Combines scores          │
          └────────────┬───────────────┘
                       │ POST /scan
                       │ {image}
                       ↓
          ┌────────────────────────────┐
-         │ OCR Service (5001)         │
-         │ • PaddleOCR processing     │
-         │ • Image analysis           │
+         │ QR Decoder (5001)          │
+         │ • QR payload decoding      │
+         │ • Risk scoring             │
          │ • Risk scoring             │
          └────────────┬───────────────┘
                       │ Response
@@ -89,7 +88,7 @@ I've successfully linked the **extension** and **ocr-scam-guard** services toget
          ┌────────────────────────────┐
          │ Combined Risk Assessment   │
          │ • Text flags               │
-         │ • OCR flags                │
+         │ • QR flags                 │
          │ • Risk score 0-100         │
          │ • Status & Color           │
          └────────────────────────────┘
@@ -142,7 +141,7 @@ Response: {
   "risk_score": 50,
   "status": "Warning",
   "flags": [...],
-  "ocr_results": { ... }
+  "qr_results": { ... }
 }
 ```
 
@@ -150,16 +149,15 @@ Response: {
 
 ---
 
-### OCR Service (http://localhost:5001)
+### QR Decoder (http://localhost:5001)
 
-**POST `/scan`**
+**POST `/decode`**
 ```json
 Request: { "image": "base64..." }
 Response: { 
+  "decoded_payloads": ["https://..."],
   "risk_score": 25,
-  "flags": [...],
-  "extracted_text": "...",
-  "bank_detected": "KBANK"
+  "flags": [...]
 }
 ```
 
@@ -173,14 +171,14 @@ Response: {
 
 **Extension Backend:**
 ```bash
-OCR_SERVICE_URL=http://localhost:5001  # Where OCR service is running
+QR_DECODER_URL=http://localhost:5001  # Where QR decoder is running
 FLASK_PORT=5000
 FLASK_ENV=production
 ```
 
-**OCR Service:**
+**QR Decoder:**
 ```bash
-OCR_PORT=5001
+QR_DECODER_PORT=5001
 FLASK_ENV=production
 ```
 
@@ -190,10 +188,10 @@ FLASK_ENV=production
 
 Both services gracefully handle failures:
 
-1. **OCR Service Down:**
-   - Extension still analyzes text
-   - Returns text-only results
-   - OCR results are `None`
+1. **QR Decoder Down:**
+  - Extension still analyzes text
+  - Returns text-only results
+  - QR results are `None`
 
 2. **Network Issues:**
    - Timeout after 10 seconds
@@ -211,14 +209,15 @@ Both services gracefully handle failures:
 ### Extension Backend
 - Flask==3.0.0
 - flask-cors==4.0.0
-- requests (NEW - for OCR communication)
+ - requests (for QR decoder communication)
 
-### OCR Service
+### QR Decoder
 - flask
 - flask-cors
 - opencv-python
 - numpy
-- paddleocr
+- opencv-python
+- numpy
 
 ---
 

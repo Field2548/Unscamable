@@ -367,10 +367,10 @@ async function analyzeNewMessages(textOrMessages, tabId) {
         setTimeout(() => reject(new Error('Analysis timeout')), 10000)
       );
 
-      // Capture a visible tab screenshot (base64) for OCR
+      // Capture a visible tab screenshot (base64) for QR decoding
       const imageDataUrl = await tryCaptureVisibleTab(tabId);
 
-      // Build request payload supporting both formats (include screenshot for OCR)
+      // Build request payload supporting both formats (include screenshot for QR decoding)
       const payload = messages.length > 0 
         ? { messages: messages, image: imageDataUrl }  // New format with metadata
         : { text: text, image: imageDataUrl };         // Legacy format
@@ -494,6 +494,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     openPopup().then((result) => sendResponse(result)).catch(() => sendResponse({ success: false }));
     return true; // Keep message channel open for async response
   }
+
+  if (request.action === 'captureScreenshot') {
+    // Capture screenshot of the specified tab or active tab
+    (async () => {
+      try {
+        const tabId = request.tabId;
+        let screenshot = '';
+        
+        if (tabId) {
+          console.log('[Service Worker] Capturing screenshot for tab:', tabId);
+          screenshot = await tryCaptureVisibleTab(tabId);
+        } else {
+          console.log('[Service Worker] No tab ID provided, getting active tab');
+          const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tabs && tabs.length > 0) {
+            screenshot = await tryCaptureVisibleTab(tabs[0].id);
+          }
+        }
+        
+        console.log('[Service Worker] Screenshot result:', screenshot ? screenshot.length + ' bytes' : 'empty');
+        sendResponse({ screenshot: screenshot || '' });
+      } catch (error) {
+        console.error('[Service Worker] Screenshot capture error:', error);
+        sendResponse({ screenshot: '' });
+      }
+    })();
+    return true; // Keep message channel open for async response
+  }
 });
 
 // ============================================================================
@@ -552,7 +580,7 @@ async function analyzeTabContent(tabId) {
 
         let analysisResult = { risk_score: 0 };
         try {
-          // Capture a visible tab screenshot for OCR
+          // Capture a visible tab screenshot for QR decoding
           const imageDataUrl = await tryCaptureVisibleTab(tabId);
 
           const serverResponse = await fetch(analyzeUrl, {

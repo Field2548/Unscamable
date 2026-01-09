@@ -1,4 +1,4 @@
-# Quick Start - Extension + OCR Integration
+# Quick Start - Extension + QR Decoder
 
 ## Run Everything in 2 Steps
 
@@ -14,7 +14,7 @@ bash start_services.sh
 
 ### Option 3: Manual (All Platforms)
 
-**Terminal 1 - Start OCR Service:**
+**Terminal 1 - Start QR Decoder:**
 ```bash
 cd ocr-scam-guard
 python server.py
@@ -41,7 +41,7 @@ Browser Extension
     ↓ (Text to analyze)
 Extension Backend (5000)
     ↓ (Optional image)
-OCR Service (5001)
+QR Decoder (5001)
     ↓
 Combined Risk Score
 ```
@@ -51,7 +51,7 @@ Combined Risk Score
 | Service | URL | Status |
 |---------|-----|--------|
 | Extension | `http://localhost:5000` | `/health` |
-| OCR | `http://localhost:5001` | `/health` |
+| QR Decoder | `http://localhost:5001` | `/health` |
 
 ## Troubleshooting
 

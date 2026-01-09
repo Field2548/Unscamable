@@ -19,20 +19,38 @@ NORMALIZED_KEYWORDS = {
 }
 
 
-def calculate_message_risk_score(message: str) -> Tuple[int, List[str]]:
-    """Assign a phishing risk score based on keyword and regex matches."""
+def calculate_message_risk_score(message: str) -> Tuple[int, List[str], dict]:
+    """Assign a phishing risk score based on keyword and regex matches.
+
+    Returns:
+        score: int
+        matched_categories: list[str]
+        matched_keywords: dict[category, list[str]] (unique keywords per category)
+    """
     score = 0
     matched_categories_set = set()  # Use set to avoid duplicates
+    matched_keywords = {}
     normalized_message = _normalize(message)
 
     # Check keywords from categories
     for category, data in CATEGORIES.items():
         normalized_keywords = NORMALIZED_KEYWORDS[category]
+        keyword_matches = 0
         for keyword, normalized_keyword in zip(data["keywords"], normalized_keywords):
             if keyword in message or normalized_keyword in normalized_message:
-                score += data["weight"]
-                matched_categories_set.add(category)
-                break  # prevent double counting same category
+                keyword_matches += 1
+                matched_keywords.setdefault(category, set()).add(keyword)
+        
+        if keyword_matches > 0:
+            # Base weight for the category
+            score += data["weight"]
+            matched_categories_set.add(category)
+            
+            # Bonus for multiple keywords in same category (indicates strong signal)
+            if keyword_matches >= 3:
+                score += 10  # 3+ keywords in same category
+            elif keyword_matches == 2:
+                score += 5   # 2 keywords in same category
 
     # URL regex (strong signal)
     if REGEX["url"].search(message):
@@ -52,4 +70,6 @@ def calculate_message_risk_score(message: str) -> Tuple[int, List[str]]:
         score += 10
 
     score = min(score, 100)
-    return score, matched_categories
+    # Convert keyword sets to lists for JSON friendliness
+    matched_keywords_list = {cat: sorted(list(keywords)) for cat, keywords in matched_keywords.items()}
+    return score, matched_categories, matched_keywords_list

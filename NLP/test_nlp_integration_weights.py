@@ -30,7 +30,7 @@ def test_category_weights():
     
     # Test promotion category (highest weight: 30)
     promotion_msg = "ได้รับรางวัล iPhone ใหม่! ลงทุนน้อย"
-    score, categories = calculate_message_risk_score(promotion_msg)
+    score, categories, _ = calculate_message_risk_score(promotion_msg)
     print(f"Promotion message: '{promotion_msg}'")
     print(f"Score: {score}, Categories: {categories}")
     assert "promotion" in categories, "Should detect promotion category"
@@ -38,7 +38,7 @@ def test_category_weights():
     
     # Test identity_threat (weight: 25)
     identity_msg = "บัญชีของคุณถูกแฮก ยืนยันตัวตนทันที"
-    score, categories = calculate_message_risk_score(identity_msg)
+    score, categories, _ = calculate_message_risk_score(identity_msg)
     print(f"\nIdentity threat message: '{identity_msg}'")
     print(f"Score: {score}, Categories: {categories}")
     assert "identity_threat" in categories, "Should detect identity_threat category"
@@ -46,7 +46,7 @@ def test_category_weights():
     
     # Test authority (weight: 20)
     authority_msg = "ตำรวจแจ้งว่าคุณมีคดีความ ติดต่อเจ้าหน้าที่"
-    score, categories = calculate_message_risk_score(authority_msg)
+    score, categories, _ = calculate_message_risk_score(authority_msg)
     print(f"\nAuthority message: '{authority_msg}'")
     print(f"Score: {score}, Categories: {categories}")
     assert "authority" in categories, "Should detect authority category"
@@ -61,7 +61,7 @@ def test_regex_weights():
     
     # Test URL detection (weight: 20)
     url_msg = "กดที่ http://suspicious.xyz/claim เพื่อรับเงิน"
-    score, categories = calculate_message_risk_score(url_msg)
+    score, categories, _ = calculate_message_risk_score(url_msg)
     print(f"URL message: '{url_msg}'")
     print(f"Score: {score}, Categories: {categories}")
     assert "url" in categories, "Should detect URL pattern"
@@ -69,7 +69,7 @@ def test_regex_weights():
     
     # Test money detection (weight: 10)
     money_msg = "คุณมียอดค้างชำระ 1,000 บาท ชำระเงิน"
-    score, categories = calculate_message_risk_score(money_msg)
+    score, categories, _ = calculate_message_risk_score(money_msg)
     print(f"\nMoney message: '{money_msg}'")
     print(f"Score: {score}, Categories: {categories}")
     assert "money" in categories or "financial_pressure" in categories, "Should detect money/financial_pressure"
@@ -83,7 +83,7 @@ def test_multiple_categories_bonus():
     
     # Message with 2 categories (bonus: 10)
     two_cat_msg = "ตำรวจแจ้งคุณมีคดี ชำระค่าปรับ 5,000 บาท"
-    score, categories = calculate_message_risk_score(two_cat_msg)
+    score, categories, _ = calculate_message_risk_score(two_cat_msg)
     print(f"Two-category message: '{two_cat_msg}'")
     print(f"Score: {score}, Categories: {categories}")
     print(f"Detected {len(categories)} categories")
@@ -91,7 +91,7 @@ def test_multiple_categories_bonus():
     
     # Message with 3+ categories (bonus: 20)
     three_cat_msg = "ได้รับรางวัล 100,000 บาท! กดลิงก์ www.prize.top เพื่อรับ"
-    score, categories = calculate_message_risk_score(three_cat_msg)
+    score, categories, _ = calculate_message_risk_score(three_cat_msg)
     print(f"\nThree-category message: '{three_cat_msg}'")
     print(f"Score: {score}, Categories: {categories}")
     print(f"Detected {len(categories)} categories")

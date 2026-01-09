@@ -124,6 +124,44 @@ function displayResult(result) {
 
   // Build categories map focused on the snippets tied to each category
   const categoriesMap = {};
+
+  // Robustly collect matched keywords from multiple possible response locations
+  const collectMatchedKeywords = () => {
+    const buckets = [];
+    if (result.analysis) buckets.push(result.analysis.matched_keywords, result.analysis.chat_report && result.analysis.chat_report.matched_keywords);
+    if (result.chat_report) buckets.push(result.chat_report.matched_keywords);
+    if (result.matched_keywords) buckets.push(result.matched_keywords);
+    const merged = {};
+    buckets.forEach((bk) => {
+      if (!bk) return;
+      Object.entries(bk).forEach(([cat, kws]) => {
+        if (!merged[cat]) merged[cat] = new Set();
+        (kws || []).forEach((kw) => {
+          const cleanKw = (kw || '').trim();
+          if (cleanKw) merged[cat].add(cleanKw);
+        });
+      });
+    });
+    return Object.fromEntries(Object.entries(merged).map(([cat, set]) => [cat, Array.from(set)]));
+  };
+
+  const matchedKeywords = collectMatchedKeywords();
+
+  // Prefer server-provided matched keywords to show exact triggers
+  Object.entries(matchedKeywords).forEach(([cat, keywords]) => {
+    if (!categoriesMap[cat]) {
+      categoriesMap[cat] = { name: cat, messages: [], messageSet: new Set(), count: 0 };
+    }
+    (keywords || []).forEach((kw) => {
+      const cleanKw = (kw || '').trim();
+      if (!cleanKw) return;
+      if (!categoriesMap[cat].messageSet.has(cleanKw)) {
+        categoriesMap[cat].messageSet.add(cleanKw);
+        categoriesMap[cat].messages.push(cleanKw);
+      }
+      categoriesMap[cat].count += 1;
+    });
+  });
   const CATEGORY_KEYWORDS = {
      "Urgency": ["ด่วน", "เร่งด่วน", "ภายใน 24 ชั่วโมง", "ทันที", "วันนี้เท่านั้น", "หมดอายุวันนี้", "ครั้งสุดท้าย", "สุดท้าย", "จะถูกระงับ", "ถูกระงับ", "ระงับบัญชี", "ระงับบริการ", "ถูกปิดใช้งาน", "ลงทะเบียนด่วน"],
      "Identity Threat": ["บัญชีของคุณ", "บัญชีของท่าน", "ยืนยันตัวตน", "ตรวจสอบตัวตน", "รหัส OTP", "ยืนยันความปลอดภัย", "ระบบตรวจพบ", "การเข้าถึงผิดปกติ", "บัญชีถูกแฮก", "ระงับบัญชีชั่วคราว"],
@@ -256,12 +294,13 @@ function displayResult(result) {
         categoryDiv.appendChild(messagesList);
       }
 
-      const countDiv = document.createElement('div');
-      countDiv.className = 'message-count';
-      countDiv.textContent = categoryData.count > 0
-        ? `Detected in ${categoryData.count} message(s)`
-        : 'Detected';
-      categoryDiv.appendChild(countDiv);
+      // Count info removed per user request
+      // const countDiv = document.createElement('div');
+      // countDiv.className = 'message-count';
+      // countDiv.textContent = categoryData.count > 0
+      //   ? `Detected in ${categoryData.count} message(s)`
+      //   : 'Detected';
+      // categoryDiv.appendChild(countDiv);
 
       categoriesContainer.appendChild(categoryDiv);
     });

@@ -32,7 +32,7 @@ def format_category_name(category: str) -> str:
 def summarize_message_scores(messages):
     summaries = []
     for msg in messages:
-        score, categories = calculate_message_risk_score(msg)
+        score, categories, _ = calculate_message_risk_score(msg)
         # Include messages that have any detected categories (even if score is 0)
         if categories:
             formatted_categories = [format_category_name(cat) for cat in categories]
@@ -64,7 +64,7 @@ def run_nlp_pipeline(raw_text: str):
     print(f"[DEBUG NLP] Analysis units: {len(analysis_units)}")
     for i, unit in enumerate(analysis_units):
         from NLP.risk_score_message import calculate_message_risk_score
-        score, cats = calculate_message_risk_score(unit)
+        score, cats, _ = calculate_message_risk_score(unit)
         print(f"[DEBUG NLP]   Unit {i}: {unit[:60]}... Score={score}, Categories={cats}")
 
     chat_report = analyze_chat(analysis_units)
@@ -86,12 +86,19 @@ def build_flags(chat_report, message_summaries):
 
     # Add category-level summaries
     for label, count in (chat_report.get("detected_categories") or {}).items():
-        flags.append(f"{label}: detected in {count} message(s)")
+        flags.append(f"{label}")
 
     # Add reason if exists
     reason = chat_report.get("reason")
     if reason:
         flags.append(reason.capitalize())
+
+    # Add explicit keyword hits per category so the popup can list them all
+    matched_keywords = chat_report.get("matched_keywords", {}) or {}
+    for label, keywords in matched_keywords.items():
+        for kw in keywords:
+            if kw:
+                flags.append(f"{label} → {kw}")
 
     # Show all message summaries (including those with score 0 or more)
     # This ensures we capture all instances of detected factors
@@ -256,7 +263,9 @@ def analyze():
         **nlp_results,
         "text_risk_score": chat_report["chat_risk_score"],
         "bank_bonus": bank_bonus,
-        "message_count": len(messages) if messages else 1
+        "message_count": len(messages) if messages else 1,
+        # Surface matched keywords for the popup UI
+        "matched_keywords": chat_report.get("matched_keywords", {})
     }
 
     return jsonify({

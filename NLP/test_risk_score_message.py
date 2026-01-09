@@ -12,7 +12,7 @@ except ImportError:  # running as standalone script
 output_lines = []
 
 for msg in MESSAGES:
-    score, matched_categories = calculate_message_risk_score(msg)
+    score, matched_categories, _ = calculate_message_risk_score(msg)
     line = f"{msg} | scam | {score} | {classify_risk(score)}\n{matched_categories}"
     print(line)
     output_lines.append(line)

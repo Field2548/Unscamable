@@ -1,4 +1,56 @@
 // ============================================================================
+// EXTENSION CONTEXT HELPER
+// ============================================================================
+
+// Check if extension context is still valid (not invalidated by reload)
+function isExtensionContextValid() {
+  try {
+    return chrome.runtime && chrome.runtime.id !== undefined;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Safe wrapper for chrome.storage.local.get
+function safeStorageGet(keys, callback) {
+  if (!isExtensionContextValid()) {
+    console.warn('[Unscamable] Extension context invalidated, skipping storage operation');
+    return;
+  }
+  try {
+    chrome.storage.local.get(keys, callback);
+  } catch (e) {
+    console.warn('[Unscamable] Storage access failed:', e.message);
+  }
+}
+
+// Safe wrapper for chrome.storage.local.set
+function safeStorageSet(items, callback) {
+  if (!isExtensionContextValid()) {
+    console.warn('[Unscamable] Extension context invalidated, skipping storage operation');
+    return;
+  }
+  try {
+    chrome.storage.local.set(items, callback);
+  } catch (e) {
+    console.warn('[Unscamable] Storage access failed:', e.message);
+  }
+}
+
+// Safe wrapper for chrome.runtime.sendMessage
+function safeSendMessage(message, callback) {
+  if (!isExtensionContextValid()) {
+    console.warn('[Unscamable] Extension context invalidated, skipping message');
+    return;
+  }
+  try {
+    chrome.runtime.sendMessage(message, callback);
+  } catch (e) {
+    console.warn('[Unscamable] Message sending failed:', e.message);
+  }
+}
+
+// ============================================================================
 // CHAT SELECTORS FOR DIFFERENT PLATFORMS
 // ============================================================================
 
@@ -488,7 +540,7 @@ function performAnalysis() {
     lastAnalysisTime = now;
     
     // Store chat history in storage for persistent analysis
-    chrome.storage.local.get({ chatHistory: [] }, (res) => {
+    safeStorageGet({ chatHistory: [] }, (res) => {
       const history = res.chatHistory || [];
       
       // Add new message with timestamp
@@ -503,10 +555,10 @@ function performAnalysis() {
         history.shift();
       }
       
-      chrome.storage.local.set({ chatHistory: history });
+      safeStorageSet({ chatHistory: history });
       
       // Trigger service worker to auto-analyze
-      chrome.runtime.sendMessage(
+      safeSendMessage(
         { action: 'auto_analyze', text: text },
         (response) => {
           if (chrome.runtime.lastError) {
@@ -534,8 +586,8 @@ function startPeriodicScanning() {
   
   // Then scan every 10 seconds
   periodicScanInterval = setInterval(() => {
-    chrome.storage.local.get({ extensionEnabled: true }, (res) => {
-      if (res.extensionEnabled) {
+    safeStorageGet({ extensionEnabled: true }, (res) => {
+      if (res && res.extensionEnabled) {
         console.log('[Unscamable] Periodic scan triggered');
         performAnalysis();
       }
@@ -586,27 +638,34 @@ function debugMessages() {
 // MESSAGE LISTENER - BACKWARDS COMPATIBLE
 // ============================================================================
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'analyze_text') {
-    chrome.storage.local.get({ extensionEnabled: true }, (res) => {
-      if (!res.extensionEnabled) {
-        sendResponse({ text: '', messages: [], paused: true });
-        return;
-      }
-      
-      // Extract text and send for analysis
-      const platform = detectPlatform();
-      const text = scrapeChatText(platform);
-      
-      sendResponse({ 
-        text: text,
-        success: true
+if (isExtensionContextValid()) {
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (!isExtensionContextValid()) {
+      console.warn('[Unscamable] Extension context invalidated, ignoring message');
+      return false;
+    }
+    
+    if (request.action === 'analyze_text') {
+      safeStorageGet({ extensionEnabled: true }, (res) => {
+        if (!res || !res.extensionEnabled) {
+          sendResponse({ text: '', messages: [], paused: true });
+          return;
+        }
+        
+        // Extract text and send for analysis
+        const platform = detectPlatform();
+        const text = scrapeChatText(platform);
+        
+        sendResponse({ 
+          text: text,
+          success: true
+        });
       });
-    });
+      return true;
+    }
     return true;
-  }
-  return true;
-});
+  });
+}
 
 // Expose debug function globally
 window.unscamableDebug = debugMessages;
@@ -618,10 +677,16 @@ window.unscamableForceAnalysis = performAnalysis;
 // ============================================================================
 
 // Start monitoring when the page loads
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
+if (isExtensionContextValid()) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      if (isExtensionContextValid()) {
+        observeNewMessages();
+      }
+    });
+  } else {
     observeNewMessages();
-  });
+  }
 } else {
-  observeNewMessages();
+  console.warn('[Unscamable] Extension context is invalid, content script will not initialize');
 }

@@ -222,14 +222,18 @@ async function showHighRiskPopup() {
     console.warn('[State Manager] Error opening high-risk popup:', error.message);
     // Fallback: use notification if popup fails
     try {
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: chrome.runtime.getURL('icons/icon_48.png'),
-        title: '⚠️ High Risk Detected',
-        message: 'Potential scam detected! Click here to review.',
-        priority: 2,
-      });
-      console.log('[State Manager] Used notification as fallback');
+      if (chrome.notifications && chrome.notifications.create) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: chrome.runtime.getURL('icons/logo-final48.png'),
+          title: '⚠️ High Risk Detected',
+          message: 'Potential scam detected! Click here to review.',
+          priority: 2,
+        });
+        console.log('[State Manager] Used notification as fallback');
+      } else {
+        console.warn('[State Manager] Notifications API not available');
+      }
     } catch (notifError) {
       console.error('[State Manager] Error creating notification:', notifError);
     }

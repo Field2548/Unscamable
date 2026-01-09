@@ -99,97 +99,35 @@ function displayResult(result) {
   const categoriesContainer = document.getElementById('categoriesContainer');
   categoriesContainer.innerHTML = '';
 
-  // Track if we have any QR detections
-  let hasQRDetection = false;
-
-  // Check for QR-specific results and display them first
-  if (result.qr_results && result.qr_results.decoded_payloads && result.qr_results.decoded_payloads.length > 0) {
-    console.log('[Unscamable] Displaying QR results');
-    hasQRDetection = true;
-    const qrDiv = document.createElement('div');
-    qrDiv.className = 'category-item';
-    
-    const qrName = document.createElement('p');
-    qrName.className = 'category-name';
-    qrName.textContent = 'Blacklist Detected';
-    qrDiv.appendChild(qrName);
-    
-    const qrCountDiv = document.createElement('div');
-    qrCountDiv.className = 'message-count';
-    qrCountDiv.textContent = `Detected in 1 QR code(s)`;
-    qrDiv.appendChild(qrCountDiv);
-    
-    categoriesContainer.appendChild(qrDiv);
-  }
-
   // Build categories map focused on the snippets tied to each category
   const categoriesMap = {};
 
-  // Robustly collect matched keywords from multiple possible response locations
-  const collectMatchedKeywords = () => {
-    const buckets = [];
-    if (result.analysis) buckets.push(result.analysis.matched_keywords, result.analysis.chat_report && result.analysis.chat_report.matched_keywords);
-    if (result.chat_report) buckets.push(result.chat_report.matched_keywords);
-    if (result.matched_keywords) buckets.push(result.matched_keywords);
-    const merged = {};
-    buckets.forEach((bk) => {
-      if (!bk) return;
-      Object.entries(bk).forEach(([cat, kws]) => {
-        if (!merged[cat]) merged[cat] = new Set();
-        (kws || []).forEach((kw) => {
-          const cleanKw = (kw || '').trim();
-          if (cleanKw) merged[cat].add(cleanKw);
-        });
-      });
-    });
-    return Object.fromEntries(Object.entries(merged).map(([cat, set]) => [cat, Array.from(set)]));
-  };
-
-  const matchedKeywords = collectMatchedKeywords();
-
-  // Prefer server-provided matched keywords to show exact triggers
-  Object.entries(matchedKeywords).forEach(([cat, keywords]) => {
-    if (!categoriesMap[cat]) {
-      categoriesMap[cat] = { name: cat, messages: [], messageSet: new Set(), count: 0 };
-    }
-    (keywords || []).forEach((kw) => {
-      const cleanKw = (kw || '').trim();
-      if (!cleanKw) return;
-      if (!categoriesMap[cat].messageSet.has(cleanKw)) {
-        categoriesMap[cat].messageSet.add(cleanKw);
-        categoriesMap[cat].messages.push(cleanKw);
-      }
-      categoriesMap[cat].count += 1;
-    });
-  });
+  // Check for QR-specific results and add to categories map
+  if (result.qr_results && result.qr_results.decoded_payloads && result.qr_results.decoded_payloads.length > 0) {
+    console.log('[Unscamable] Adding QR blacklist to categories');
+    categoriesMap['Blacklist Detected'] = {
+      name: 'Blacklist Detected',
+      messages: [],
+      messageSet: new Set(),
+      count: 1
+    };
+  }
   const CATEGORY_KEYWORDS = {
-     "Urgency": ["ด่วน", "เร่งด่วน", "ภายใน 24 ชั่วโมง", "ทันที", "วันนี้เท่านั้น", "หมดอายุวันนี้", "ครั้งสุดท้าย", "สุดท้าย", "จะถูกระงับ", "ถูกระงับ", "ระงับบัญชี", "ระงับบริการ", "ถูกปิดใช้งาน", "ลงทะเบียนด่วน"],
-     "Identity Threat": ["บัญชีของคุณ", "บัญชีของท่าน", "ยืนยันตัวตน", "ตรวจสอบตัวตน", "รหัส OTP", "ยืนยันความปลอดภัย", "ระบบตรวจพบ", "การเข้าถึงผิดปกติ", "บัญชีถูกแฮก", "ระงับบัญชีชั่วคราว"],
-     "Financial Pressure": ["ยอดค้างชำระ", "ค้างชำระ", "ค่าปรับ", "ค่าธรรมเนียม", "หนี้ค้าง", "ชำระเงิน", "โอนเงิน", "จ่ายบิล", "โอนเงินผิดปกติ", "คืนเงิน", "โอนเงินคืน", "ใบสั่งออนไลน์", "ชำระค่าปรับ", "วงเงินเหลือ", "ค่าไฟฟ้า", "ค่าปรับจราจร"],
-     "Authority": ["ตำรวจ", "เจ้าหน้าที่", "กรม", "กระทรวง", "ฝ่ายความปลอดภัย", "ศาล", "หมายศาล", "คดีความ", "ปปง.", "เงินเยียวยา", "สิทธิ์รัฐ", "ธนาคาร", "ศูนย์บริการ", "ฝ่ายกฎหมาย", "ฝ่าย กฎหมาย"],
-     "Delivery Scams": ["พัสดุ", "ขนส่ง", "จัดส่ง", "เลขแทรกกิ้ง", "ติดต่อผู้รับไม่ได้", "ยืนยันการจัดส่ง", "ไม่สามารถจัดส่ง", "เช็กสถานะ"],
-     "Promotional Bait": ["ได้รับรางวัล", "iPhone", "โปรโมชั่น", "โปรเด็ด", "โปรพิเศษ", "ฝาก100รับ200", "เงินคืน", "กำไรการันตี", "ลงทุนน้อย", "งานพาร์ทไทม์", "รายได้ดี", "รับของรางวัล", "แบบสอบถาม", "ฟรี", "ระบบออโต้", "ไม่มีขั้นต่ำ"],
-     "Link Requests": ["คลิกลิงก์", "กดลิงก์", "ตรวจสอบที่", "ตรวจสอบเลย", "ติดต่อด่วน", "ติดต่อเจ้าหน้าที่", "แอดไลน์", "คลิกยืนยัน", "เพื่อตรวจสอบ"],
-     "Suspicious URL": [],
-     "Money Mentions": []
+    Authority: ["ตำรวจ", "เจ้าหน้าที่", "กรม", "กระทรวง", "ฝ่ายความปลอดภัย", "ศาล", "หมายศาล", "คดีความ", "ปปง.", "สิทธิ์รัฐ", "ธนาคาร", "ศูนย์บริการ", "ฝ่ายกฎหมาย"],
+    "Financial Pressure": ["ยอดค้างชำระ", "ค้างชำระ", "ค่าปรับ", "ค่าธรรมเนียม", "หนี้ค้าง", "ชำระเงิน", "โอนเงิน", "จ่ายบิล", "โอนเงินผิดปกติ", "คืนเงิน", "โอนเงินคืน", "ชำระค่าปรับ", "ค่าไฟฟ้า"],
+    "OTP Request": ["รหัส OTP", "OTP"],
+    "Promotional Bait": ["ได้รับรางวัล", "โปรโมชั่น", "โปรพิเศษ", "เงินคืน", "กำไรการันตี"],
+    "Link Requests": ["คลิกลิงก์", "กดลิงก์", "ตรวจสอบที่", "ตรวจสอบเลย", "คลิกยืนยัน", "แอดไลน์"],
+    "Delivery Scams": ["พัสดุ", "ขนส่ง", "จัดส่ง", "เลขแทรกกิ้ง", "ยืนยันการจัดส่ง", "ไม่สามารถจัดส่ง"],
+    Urgency: ["ด่วน", "เร่งด่วน", "ทันที", "วันนี้เท่านั้น", "ครั้งสุดท้าย", "จะถูกระงับ", "ระงับบริการ"],
+    "Identity Threat": ["บัญชีของคุณ", "บัญชีของท่าน", "ยืนยันตัวตน", "ตรวจสอบตัวตน", "ยืนยันความปลอดภัย", "ระบบตรวจพบ", "บัญชีถูกแฮก", "ระงับบัญชีชั่วคราว"]
   };
 
   const focusSnippet = (cat, text) => {
     const keywords = CATEGORY_KEYWORDS[cat];
     if (!keywords || !text) return text;
-    
-    // Remove quotes if present
-    const cleanText = text.replace(/^["']|["']$/g, '');
-    
-    // Find and return the first matching keyword only
-    for (const kw of keywords) {
-      if (cleanText.includes(kw)) {
-        return kw;
-      }
-    }
-    
-    // If no keyword found, return the original text (shouldn't happen)
-    return cleanText;
+    const hit = keywords.find((kw) => text.includes(kw));
+    return hit || text;
   };
   const shouldSkipSnippet = (text) => {
     if (!text) return true;
@@ -253,8 +191,7 @@ function displayResult(result) {
 
   const categoryKeys = Object.keys(categoriesMap);
 
-  // Only show "No suspicious factors detected" if there are no categories AND no QR detections
-  if (categoryKeys.length === 0 && !hasQRDetection) {
+  if (categoryKeys.length === 0) {
     const noneDiv = document.createElement('div');
     noneDiv.className = 'category-item';
     const p = document.createElement('p');
@@ -262,7 +199,7 @@ function displayResult(result) {
     p.textContent = 'No suspicious factors detected';
     noneDiv.appendChild(p);
     categoriesContainer.appendChild(noneDiv);
-  } else if (categoryKeys.length > 0) {
+  } else {
     categoryKeys.forEach((key) => {
       const categoryData = categoriesMap[key];
       const categoryDiv = document.createElement('div');
@@ -294,13 +231,12 @@ function displayResult(result) {
         categoryDiv.appendChild(messagesList);
       }
 
-      // Count info removed per user request
-      // const countDiv = document.createElement('div');
-      // countDiv.className = 'message-count';
-      // countDiv.textContent = categoryData.count > 0
-      //   ? `Detected in ${categoryData.count} message(s)`
-      //   : 'Detected';
-      // categoryDiv.appendChild(countDiv);
+      const countDiv = document.createElement('div');
+      countDiv.className = 'message-count';
+      countDiv.textContent = categoryData.count > 0
+        ? `Detected in ${categoryData.count} message(s)`
+        : 'Detected';
+      categoryDiv.appendChild(countDiv);
 
       categoriesContainer.appendChild(categoryDiv);
     });
@@ -397,30 +333,10 @@ function runAnalysisIfEnabled() {
         // Check for lastError immediately with safe access
         const lastError = chrome.runtime.lastError;
         if (lastError) {
-          const errorMsg = lastError?.message || lastError?.toString() || 'Unknown error';
-          console.warn('[Unscamable] Content script connection failed:', errorMsg);
-          
-          // Try to inject content script if it's missing
-          if (errorMsg.includes('Receiving end does not exist')) {
-            console.log('[Unscamable] Attempting to inject content script...');
-            chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              files: ['content.js']
-            }).then(() => {
-              console.log('[Unscamable] Content script injected, retrying...');
-              // Retry the analysis after a brief delay
-              setTimeout(() => runAnalysisIfEnabled(), 500);
-            }).catch((err) => {
-              console.error('[Unscamable] Failed to inject content script:', err);
-              hideLoading();
-              document.getElementById('riskLevel').textContent = 'Error';
-              document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Refresh the page and try again</p></div>';
-            });
-          } else {
-            hideLoading();
-            document.getElementById('riskLevel').textContent = 'Error';
-            document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Refresh the page and try again</p></div>';
-          }
+          console.error('[Unscamable] Content script error:', lastError?.message || lastError?.toString() || 'Unknown error');
+          hideLoading();
+          document.getElementById('riskLevel').textContent = 'Error';
+          document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Refresh the page and try again</p></div>';
           return;
         }
 

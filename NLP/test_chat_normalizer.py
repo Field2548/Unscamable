@@ -1,9 +1,0 @@
-from chat_normalizer import normalize_chat_messages
-
-msgs = [
-    "🚨 ด่วน!!!",
-    "พัสดุของคุณไม่สามารถจัดส่งได้ครับ 🙏",
-    "กรุณายืนยันที่อยู่ทันทีค่ะ",
-]
-
-print(normalize_chat_messages(msgs))

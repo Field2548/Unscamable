@@ -95,13 +95,16 @@ def build_flags(chat_report, message_summaries):
 
     # Show all message summaries (including those with score 0 or more)
     # This ensures we capture all instances of detected factors
+    # Create separate flags for each category to avoid duplication
     for summary in message_summaries:
         if summary.get("categories"):  # Only show if there are categories
-            categories = ", ".join(summary["categories"])
             snippet = summary["text"].strip()
             if len(snippet) > 120:
                 snippet = snippet[:117] + "..."
-            flags.append(f"{categories} → \"{snippet}\"")
+            
+            # Create a separate flag for each category
+            for category in summary["categories"]:
+                flags.append(f"{category} → \"{snippet}\"")
 
     print(f"[DEBUG] Detected categories: {chat_report.get('detected_categories')}")
     print(f"[DEBUG] Total flags: {len(flags)}")

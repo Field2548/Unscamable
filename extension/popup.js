@@ -397,10 +397,30 @@ function runAnalysisIfEnabled() {
         // Check for lastError immediately with safe access
         const lastError = chrome.runtime.lastError;
         if (lastError) {
-          console.error('[Unscamable] Content script error:', lastError?.message || lastError?.toString() || 'Unknown error');
-          hideLoading();
-          document.getElementById('riskLevel').textContent = 'Error';
-          document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Refresh the page and try again</p></div>';
+          const errorMsg = lastError?.message || lastError?.toString() || 'Unknown error';
+          console.warn('[Unscamable] Content script connection failed:', errorMsg);
+          
+          // Try to inject content script if it's missing
+          if (errorMsg.includes('Receiving end does not exist')) {
+            console.log('[Unscamable] Attempting to inject content script...');
+            chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ['content.js']
+            }).then(() => {
+              console.log('[Unscamable] Content script injected, retrying...');
+              // Retry the analysis after a brief delay
+              setTimeout(() => runAnalysisIfEnabled(), 500);
+            }).catch((err) => {
+              console.error('[Unscamable] Failed to inject content script:', err);
+              hideLoading();
+              document.getElementById('riskLevel').textContent = 'Error';
+              document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Refresh the page and try again</p></div>';
+            });
+          } else {
+            hideLoading();
+            document.getElementById('riskLevel').textContent = 'Error';
+            document.getElementById('categoriesContainer').innerHTML = '<div class="category-item"><p class="category-name">Refresh the page and try again</p></div>';
+          }
           return;
         }
 

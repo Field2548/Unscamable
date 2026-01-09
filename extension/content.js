@@ -14,7 +14,12 @@ function isExtensionContextValid() {
 // Safe wrapper for chrome.storage.local.get
 function safeStorageGet(keys, callback) {
   if (!isExtensionContextValid()) {
-    console.warn('[Unscamable] Extension context invalidated, skipping storage operation');
+    console.warn('[Unscamable] Extension context invalidated, stopping all operations');
+    // Stop periodic scanning when context is invalid
+    if (periodicScanInterval) {
+      clearInterval(periodicScanInterval);
+      periodicScanInterval = null;
+    }
     return;
   }
   try {
@@ -507,6 +512,12 @@ const MIN_ANALYSIS_INTERVAL = 2000; // Minimum 2 seconds between analyses
 let periodicScanInterval = null;
 
 function scheduleAnalysis() {
+  // Check if extension context is still valid
+  if (!isExtensionContextValid()) {
+    console.warn('[Unscamable] Extension context invalid, skipping scheduled analysis');
+    return;
+  }
+  
   // Debounce: wait 500ms after the last DOM change before analyzing
   clearTimeout(analysisTimeout);
   analysisTimeout = setTimeout(() => {
@@ -515,6 +526,16 @@ function scheduleAnalysis() {
 }
 
 function performAnalysis() {
+  // Check if extension context is still valid
+  if (!isExtensionContextValid()) {
+    console.warn('[Unscamable] Extension context invalid, stopping analysis');
+    if (periodicScanInterval) {
+      clearInterval(periodicScanInterval);
+      periodicScanInterval = null;
+    }
+    return;
+  }
+  
   // Only analyze if there are new messages
   if (newMessagesToAnalyze.length === 0) {
     return;
@@ -586,6 +607,14 @@ function startPeriodicScanning() {
   
   // Then scan every 10 seconds
   periodicScanInterval = setInterval(() => {
+    // Check if context is still valid before scanning
+    if (!isExtensionContextValid()) {
+      console.warn('[Unscamable] Extension context invalid, stopping periodic scan');
+      clearInterval(periodicScanInterval);
+      periodicScanInterval = null;
+      return;
+    }
+    
     safeStorageGet({ extensionEnabled: true }, (res) => {
       if (res && res.extensionEnabled) {
         console.log('[Unscamable] Periodic scan triggered');
